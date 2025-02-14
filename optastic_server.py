@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 import json
 from pathlib import Path
 from typing import List, Optional
@@ -32,11 +32,10 @@ def optimize(project_root: Path, filename: str, lineno: int):
 
     lang = "rust"
     project = Project(project_root, lang)
-    lsp = project.lsp()
-    with lsp.start_server():
-        tool_runner = LLMToolRunner(lsp, [LookupDefinitionTool()])
+    with project.lsp().start_server():
+        tool_runner = LLMToolRunner(project, [LookupDefinitionTool(), GetLineTool()])
 
-        linestr = project.get_line(filename, lineno)
+        linestr = project.get_line(filename, lineno - 1)
         messages = [
             {
                 "role": "system",
@@ -101,15 +100,17 @@ class Project:
         return self._lsp
 
     def get_line(self, filename: str, line: int) -> str:
+        assert line >= 0
         with open(self._root.joinpath(filename), "r") as f:
             lines = f.readlines()
-            return lines[line - 1]
+            return lines[line]
 
 
 class LLMTool(ABC):
     schema: dict
 
-    def exec(self, req: dict, lsp: SyncLanguageServer) -> dict:
+    @abstractmethod
+    def exec(self, req: dict, project: Project) -> dict:
         pass
 
 
@@ -128,11 +129,11 @@ class LookupDefinitionTool(LLMTool):
                     },
                     "line": {
                         "type": "integer",
-                        "description": "The line number",
+                        "description": "The 1-based line number",
                     },
                     "column": {
                         "type": "integer",
-                        "description": "The column number",
+                        "description": "The 1-based column number",
                     },
                 },
                 "required": ["filename", "line", "column"],
@@ -140,21 +141,50 @@ class LookupDefinitionTool(LLMTool):
         },
     }
 
-    def exec(self, req, lsp):
+    def exec(self, req: dict, project: Project):
         filename = req["filename"]
         line = int(req["line"])
         column = int(req["column"])
-        return lsp.request_definition(filename, line, column)
+        return project.lsp().request_definition(filename, line - 1, column - 1)
+
+
+class GetLineTool(LLMTool):
+    schema = {
+        "type": "function",
+        "function": {
+            "name": "getLine",
+            "description": "Get a line of source code from its filename and line number",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "The filename",
+                    },
+                    "line": {
+                        "type": "integer",
+                        "description": "The 1-based line number",
+                    },
+                },
+                "required": ["filename", "line"],
+            },
+        },
+    }
+
+    def exec(self, req, project):
+        filename = req["filename"]
+        line = int(req["line"])
+        return project.get_line(filename, line - 1)
 
 
 class LLMToolRunner:
-    def __init__(self, lsp: SyncLanguageServer, tools: List[LLMTool]):
-        self._lsp = lsp
+    def __init__(self, project: Project, tools: List[LLMTool]):
+        self._project = project
         self._tools = dict((t.schema["function"]["name"], t) for t in tools)
 
     def call(self, name: str, args: dict):
         print(f"TOOL CALL {name}: {args}")
-        resp = self._tools[name].exec(args, lsp=self._lsp)
+        resp = self._tools[name].exec(args, project=self._project)
         print(f"==> {resp}")
         return resp
 
