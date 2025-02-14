@@ -34,7 +34,7 @@ def optimize(project_root: Path, filename: str, lineno: int):
     project = Project(project_root, lang)
     with project.lsp().start_server():
         tool_runner = LLMToolRunner(
-            project, [LookupDefinitionTool(), GetLineTool(), GetInfoTool()]
+            project, [LookupDefinitionTool(), GetCodeTool(), GetInfoTool()]
         )
 
         linestr = project.get_line(filename, lineno - 1)
@@ -103,9 +103,14 @@ class Project:
 
     def get_line(self, filename: str, line: int) -> str:
         assert line >= 0
+        return self.get_lines(filename, line, line)
+
+    def get_lines(self, filename: str, sline: int, eline: int) -> List[str]:
         with open(self._root.joinpath(filename), "r") as f:
             lines = f.readlines()
-            return lines[line]
+            sline = max(sline, 0)
+            eline = min(eline, len(lines))
+            return lines[sline : eline + 1]
 
 
 class LLMTool(ABC):
@@ -198,12 +203,12 @@ class GetInfoTool(LLMTool):
         return {"contents": resp["contents"]}
 
 
-class GetLineTool(LLMTool):
+class GetCodeTool(LLMTool):
     schema = {
         "type": "function",
         "function": {
             "name": "getLine",
-            "description": "Get a line of source code from its filename and line number",
+            "description": "Get several lines of source code near a given line number",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -223,8 +228,8 @@ class GetLineTool(LLMTool):
 
     def exec(self, req, project):
         filename = req["filename"]
-        line = int(req["line"])
-        return project.get_line(filename, line - 1)
+        line = int(req["line"]) - 1
+        return project.get_lines(filename, line - 3, line + 3)
 
 
 class LLMToolRunner:
