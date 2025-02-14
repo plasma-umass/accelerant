@@ -33,13 +33,15 @@ def optimize(project_root: Path, filename: str, lineno: int):
     lang = "rust"
     project = Project(project_root, lang)
     with project.lsp().start_server():
-        tool_runner = LLMToolRunner(project, [LookupDefinitionTool(), GetLineTool()])
+        tool_runner = LLMToolRunner(
+            project, [LookupDefinitionTool(), GetLineTool(), GetInfoTool()]
+        )
 
         linestr = project.get_line(filename, lineno - 1)
         messages = [
             {
                 "role": "system",
-                "content": f"You are a {lang} performance optimization assistant. Please optimize the user's program, making use of the provided tool calls that will let you explore the program.",
+                "content": f"You are a {lang} performance optimization assistant. Please optimize the user's program, making use of the provided tool calls that will let you explore the program. Never make assumptions about the program; use tool calls if you are not sure.",
             },
             {
                 "role": "user",
@@ -143,9 +145,9 @@ class LookupDefinitionTool(LLMTool):
 
     def exec(self, req: dict, project: Project):
         filename = req["filename"]
-        line = int(req["line"])
-        column = int(req["column"])
-        resp = project.lsp().request_definition(filename, line - 1, column - 1)
+        line = int(req["line"]) - 1
+        column = int(req["column"]) - 1
+        resp = project.lsp().request_definition(filename, line, column)
 
         def cvt(r):
             return {
@@ -155,6 +157,45 @@ class LookupDefinitionTool(LLMTool):
             }
 
         return list(map(cvt, resp))
+
+
+class GetInfoTool(LLMTool):
+    schema = {
+        "type": "function",
+        "function": {
+            "name": "getInfo",
+            "description": "Get info (like inferred types) about a piece of code",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "The filename",
+                    },
+                    "line": {
+                        "type": "integer",
+                        "description": "The 1-based line number",
+                    },
+                    "column": {
+                        "type": "integer",
+                        "description": "The 1-based column number",
+                    },
+                },
+                "required": ["filename", "line", "column"],
+            },
+        },
+    }
+
+    def exec(self, req: dict, project: Project):
+        filename = req["filename"]
+        line = int(req["line"]) - 1
+        column = int(req["column"]) - 1
+        resp = project.lsp().request_hover(filename, line, column)
+        if resp is None:
+            return {
+                "error": "no info found for that location (maybe off-by-one error?)"
+            }
+        return {"contents": resp["contents"]}
 
 
 class GetLineTool(LLMTool):
