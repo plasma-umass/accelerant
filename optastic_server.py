@@ -145,7 +145,16 @@ class LookupDefinitionTool(LLMTool):
         filename = req["filename"]
         line = int(req["line"])
         column = int(req["column"])
-        return project.lsp().request_definition(filename, line - 1, column - 1)
+        resp = project.lsp().request_definition(filename, line - 1, column - 1)
+
+        def cvt(r):
+            return {
+                "relativePath": r["relativePath"],
+                "startLine": r["range"]["start"]["line"] + 1,
+                "endLine": r["range"]["end"]["line"] + 1,
+            }
+
+        return list(map(cvt, resp))
 
 
 class GetLineTool(LLMTool):
