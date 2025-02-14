@@ -140,6 +140,12 @@ class LookupDefinitionTool(LLMTool):
         },
     }
 
+    def exec(self, req, lsp):
+        filename = req["filename"]
+        line = int(req["line"])
+        column = int(req["column"])
+        return lsp.request_definition(filename, line, column)
+
 
 class LLMToolRunner:
     def __init__(self, lsp: SyncLanguageServer, tools: List[LLMTool]):
@@ -147,7 +153,10 @@ class LLMToolRunner:
         self._tools = dict((t.schema["function"]["name"], t) for t in tools)
 
     def call(self, name: str, args: dict):
-        return self._tools[name].exec(args, lsp=self._lsp)
+        print(f"TOOL CALL {name}: {args}")
+        resp = self._tools[name].exec(args, lsp=self._lsp)
+        print(f"==> {resp}")
+        return resp
 
     def all_schemas(self) -> list[dict]:
         return list(map(lambda tool: tool.schema, self._tools.values()))
