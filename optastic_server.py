@@ -7,6 +7,7 @@ import openai
 from optastic.project import Project
 from optastic.tools import LookupDefinitionTool, GetCodeTool, GetInfoTool
 from optastic.tools import LLMToolRunner
+
 app = Flask(__name__)
 
 
@@ -53,10 +54,11 @@ def optimize(project_root: Path, filename: str, lineno: int):
         while (
             response_msg is None or response_msg.tool_calls
         ) and round_num <= MAX_ROUNDS:
+            tool_schemas = tool_runner.all_schemas()
             response = client.chat.completions.create(
                 model="gpt-4o",
                 messages=messages,
-                tools=tool_runner.all_schemas(),
+                tools=tool_schemas,
                 tool_choice="auto",
             )
             response_msg = response.choices[0].message

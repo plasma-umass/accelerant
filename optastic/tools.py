@@ -24,9 +24,9 @@ class LLMTool(ABC):
 
 class LookupDefinitionTool(LLMTool):
     class LookupDefinition(BaseModel):
-        filename: str = Field(description="The filename", required=True)
-        line: int = Field(description="The 1-based line number", required=True)
-        column: int = Field(description="The 1-based column number", required=True)
+        filename: str = Field(description="The filename")
+        line: int = Field(description="The 1-based line number")
+        column: int = Field(description="The 1-based column number")
 
     schema = openai.pydantic_function_tool(
         LookupDefinition,
@@ -50,11 +50,12 @@ class LookupDefinitionTool(LLMTool):
 
         return list(map(cvt, resp))
 
+
 class GetInfoTool(LLMTool):
     class GetInfo(BaseModel):
-        filename: str = Field(description="The filename", required=True)
-        line: int = Field(description="The 1-based line number", required=True)
-        column: int = Field(description="The 1-based column number", required=True)
+        filename: str = Field(description="The filename")
+        line: int = Field(description="The 1-based line number")
+        column: int = Field(description="The 1-based column number")
 
     schema = openai.pydantic_function_tool(
         GetInfo,
@@ -62,6 +63,7 @@ class GetInfoTool(LLMTool):
         description="Get info (like inferred types) about a piece of code",
     )
     params_type = GetInfo
+
     def exec(self, req: GetInfo, project: Project):
         filename = req.filename
         line = req.line - 1
@@ -72,36 +74,16 @@ class GetInfoTool(LLMTool):
                 "error": "no info found for that location (maybe off-by-one error?)"
             }
         return {"contents": resp["contents"]}
-# schema = {
-#     "type": "function",
-#     "function": {
-#         "name": "getLine",
-#         "description": "Get several lines of source code near a given line number",
-#         "parameters": {
-#             "type": "object",
-#             "properties": {
-#                 "filename": {
-#                     "type": "string",
-#                     "description": "The filename",
-#                 },
-#                 "line": {
-#                     "type": "integer",
-#                     "description": "The 1-based line number",
-#                 },
-#             },
-#             "required": ["filename", "line"],
-#         },
-#     },
-# }
+
 
 class GetCodeTool(LLMTool):
     class GetCode(BaseModel):
-        filename: str = Field(description="The filename", required=True)
-        line: int = Field(description="The 1-based line number", required=True)
+        filename: str = Field(description="The filename")
+        line: int = Field(description="The 1-based line number")
 
     schema = openai.pydantic_function_tool(
         GetCode,
-        name="getLine",
+        name="getCode",
         description="Get several lines of source code near a given line number",
     )
     params_type = GetCode
@@ -115,7 +97,9 @@ class GetCodeTool(LLMTool):
 class LLMToolRunner:
     def __init__(self, project: Project, tools: List[LLMTool]):
         self._project = project
-        self._tools: Dict[str, LLMTool] = dict((t.schema["function"]["name"], t) for t in tools)
+        self._tools: Dict[str, LLMTool] = dict(
+            (t.schema["function"]["name"], t) for t in tools
+        )
 
     def call(self, name: str, args: dict):
         print(f"TOOL CALL {name}: {args}")
