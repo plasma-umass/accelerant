@@ -28,4 +28,4 @@ jobs:
         if [ -f requirements.txt ]; then pip install --no-deps -r requirements.txt; fi
     - name: Typecheck with mypy
       run: |
-        mypy
+        mypy .
