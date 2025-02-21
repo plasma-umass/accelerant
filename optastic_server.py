@@ -1,8 +1,9 @@
-from abc import ABC, abstractmethod
 import json
 from pathlib import Path
+from typing import List
 from flask import Flask, request
 import openai
+from openai.types.chat.chat_completion_message_param import ChatCompletionMessageParam
 
 from optastic.project import Project
 from optastic.tools import LookupDefinitionTool, GetCodeTool, GetInfoTool
@@ -37,7 +38,7 @@ def optimize(project_root: Path, filename: str, lineno: int):
         )
 
         linestr = project.get_line(filename, lineno - 1)
-        messages = [
+        messages: List[ChatCompletionMessageParam] = [
             {
                 "role": "system",
                 "content": f"You are a {lang} performance optimization assistant. Please optimize the user's program, making use of the provided tool calls that will let you explore the program. Never make assumptions about the program; use tool calls if you are not sure.",
@@ -63,7 +64,7 @@ def optimize(project_root: Path, filename: str, lineno: int):
             )
             response_msg = response.choices[0].message
             print(response_msg)
-            messages.append(response_msg)
+            messages.append({"role": "assistant", "content": response_msg.content})
             tool_calls = response_msg.tool_calls
 
             if tool_calls:
@@ -75,10 +76,11 @@ def optimize(project_root: Path, filename: str, lineno: int):
                         {
                             "tool_call_id": tool_call.id,
                             "role": "tool",
-                            "name": func_name,
                             "content": json.dumps(func_response),
                         }
                     )
 
             round_num += 1
+
+        assert response_msg is not None
         return response_msg.content

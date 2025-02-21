@@ -26,7 +26,7 @@ class Project:
 
     def get_line(self, filename: str, line: int) -> str:
         assert line >= 0
-        return self.get_lines(filename, line, line)
+        return self.get_lines(filename, line, line)[0]
 
     def get_lines(self, filename: str, sline: int, eline: int) -> List[str]:
         with open(self._root.joinpath(filename), "r") as f:

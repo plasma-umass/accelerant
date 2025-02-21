@@ -1,44 +1,43 @@
 from typing import Dict, List
-from multilspy import SyncLanguageServer
 from pydantic import BaseModel, Field
 import openai
 from .project import Project
 from openai.types.chat import ChatCompletionToolParam
 
 
-from abc import ABC
+from abc import ABC, abstractmethod
 
 openai.pydantic_function_tool
 
 
 class LLMTool(ABC):
-    schema: ChatCompletionToolParam
-
     @property
-    def params_type(self) -> BaseModel:
+    @abstractmethod
+    def schema(self) -> ChatCompletionToolParam:
         pass
 
-    def exec(self, req: BaseModel, lsp: SyncLanguageServer) -> dict:
+    @abstractmethod
+    def exec(self, req: dict, project: Project) -> dict:
         pass
 
 
 class LookupDefinitionTool(LLMTool):
-    class LookupDefinition(BaseModel):
+    class Model(BaseModel):
         filename: str = Field(description="The filename")
         line: int = Field(description="The 1-based line number")
         column: int = Field(description="The 1-based column number")
 
     schema = openai.pydantic_function_tool(
-        LookupDefinition,
+        Model,
         name="lookup_definition",
         description="Lookup the definition of a symbol at a particular location",
     )
-    params_type = LookupDefinition
 
-    def exec(self, req: LookupDefinition, project: Project):
-        filename = req.filename
-        line = int(req.line) - 1
-        column = int(req.column) - 1
+    def exec(self, req: dict, project: Project):
+        r = self.Model.model_validate(req)
+        filename = r.filename
+        line = int(r.line) - 1
+        column = int(r.column) - 1
         resp = project.lsp().request_definition(filename, line, column)
 
         def cvt(r):
@@ -52,22 +51,22 @@ class LookupDefinitionTool(LLMTool):
 
 
 class GetInfoTool(LLMTool):
-    class GetInfo(BaseModel):
+    class Model(BaseModel):
         filename: str = Field(description="The filename")
         line: int = Field(description="The 1-based line number")
         column: int = Field(description="The 1-based column number")
 
     schema = openai.pydantic_function_tool(
-        GetInfo,
+        Model,
         name="get_info",
         description="Get info (like inferred types) about a piece of code",
     )
-    params_type = GetInfo
 
-    def exec(self, req: GetInfo, project: Project):
-        filename = req.filename
-        line = req.line - 1
-        column = req.column - 1
+    def exec(self, req: dict, project: Project):
+        r = self.Model.model_validate(req)
+        filename = r.filename
+        line = r.line - 1
+        column = r.column - 1
         resp = project.lsp().request_hover(filename, line, column)
         if resp is None:
             return {
@@ -77,20 +76,20 @@ class GetInfoTool(LLMTool):
 
 
 class GetCodeTool(LLMTool):
-    class GetCode(BaseModel):
+    class Model(BaseModel):
         filename: str = Field(description="The filename")
         line: int = Field(description="The 1-based line number")
 
     schema = openai.pydantic_function_tool(
-        GetCode,
+        Model,
         name="getCode",
         description="Get several lines of source code near a given line number",
     )
-    params_type = GetCode
 
-    def exec(self, req: GetCode, project: Project):
-        filename = req.filename
-        line = int(req.line) - 1
+    def exec(self, req: dict, project: Project):
+        r = self.Model.model_validate(req)
+        filename = r.filename
+        line = int(r.line) - 1
         return project.get_lines(filename, line - 3, line + 3)
 
 
@@ -104,10 +103,10 @@ class LLMToolRunner:
     def call(self, name: str, args: dict):
         print(f"TOOL CALL {name}: {args}")
         tool = self._tools[name]
-        resp = tool.exec(tool.params_type.model_validate(args), project=self._project)
+        resp = tool.exec(args, project=self._project)
 
         print(f"==> {resp}")
         return resp
 
-    def all_schemas(self) -> list[dict]:
+    def all_schemas(self) -> list[ChatCompletionToolParam]:
         return list(map(lambda tool: tool.schema, self._tools.values()))
