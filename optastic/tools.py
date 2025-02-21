@@ -111,11 +111,8 @@ class LLMToolRunner:
         )
 
     def call(self, name: str, args: dict):
-        print(f"TOOL CALL {name}: {args}")
         tool = self._tools[name]
         resp = tool.exec(args, project=self._project)
-
-        print(f"==> {resp}")
         return resp
 
     def all_schemas(self) -> list[ChatCompletionToolParam]:

@@ -1,9 +1,11 @@
 import json
 from pathlib import Path
-from typing import List
+from typing import Any, List
 from flask import Flask, request
 import openai
+from rich import print as rprint
 from openai.types.chat.chat_completion_message_param import ChatCompletionMessageParam
+from openai.types.chat.chat_completion import ChatCompletion
 
 from optastic.project import Project
 from optastic.tools import LookupDefinitionTool, GetCodeTool, GetInfoTool
@@ -48,6 +50,9 @@ def optimize(project_root: Path, filename: str, lineno: int):
                 "content": f"I've identified line {filename}:{lineno} as a hotspot, reproduced below. Please help me optimize it.\n\n```{lang}\n{linestr}\n```",
             },
         ]
+        for msg in messages:
+            _print_message(msg)
+
         response_msg = None
         MAX_ROUNDS = 15
         round_num = 0
@@ -61,15 +66,18 @@ def optimize(project_root: Path, filename: str, lineno: int):
                 tools=tool_schemas,
                 tool_choice="auto",
             )
+            _print_completion(response)
             response_msg = response.choices[0].message
             messages.append(response_msg)  # type: ignore
             tool_calls = response_msg.tool_calls
 
             if tool_calls:
+                rprint("Tool responses:")
                 for tool_call in tool_calls:
                     func_name = tool_call.function.name
                     func_args = json.loads(tool_call.function.arguments)
                     func_response = tool_runner.call(func_name, func_args)
+                    rprint(f"  {func_name} =>", func_response)
                     messages.append(
                         {
                             "tool_call_id": tool_call.id,
@@ -82,3 +90,25 @@ def optimize(project_root: Path, filename: str, lineno: int):
 
         assert response_msg is not None
         return response_msg.content
+
+
+def _print_message(msg: Any):
+    if type(msg) is dict:
+        role = msg["role"]
+        content = msg["content"]
+    else:
+        role = msg.role
+        content = msg.content
+    rprint(f"[purple]{role}:[/purple] {content}")
+
+
+def _print_completion(completion: ChatCompletion):
+    response = completion.choices[0].message
+    rprint(f"[orange]Choice 1/{len(completion.choices)}[/orange]:")
+    _print_message(response)
+    if response.tool_calls:
+        rprint("[blue]Tool calls:[/blue]")
+        for call in response.tool_calls:
+            funcname = call.function.name
+            funcargs = call.function.arguments
+            rprint(f"  {funcname} =>", funcargs)
