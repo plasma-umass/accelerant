@@ -1,6 +1,8 @@
 from typing import Dict, List
 from pydantic import BaseModel, Field
 import openai
+
+from optastic.util import find_symbol
 from .project import Project
 from openai.types.chat import ChatCompletionToolParam
 
@@ -25,7 +27,7 @@ class LookupDefinitionTool(LLMTool):
     class Model(BaseModel):
         filename: str = Field(description="The filename")
         line: int = Field(description="The 1-based line number")
-        column: int = Field(description="The 1-based column number")
+        symbol: str = Field(description="The symbol's text")
 
     schema = openai.pydantic_function_tool(
         Model,
@@ -35,10 +37,14 @@ class LookupDefinitionTool(LLMTool):
 
     def exec(self, req: dict, project: Project):
         r = self.Model.model_validate(req)
-        filename = r.filename
-        line = int(r.line) - 1
-        column = int(r.column) - 1
-        resp = project.lsp().request_definition(filename, line, column)
+
+        srclines = project.get_lines(r.filename)
+        result = find_symbol(srclines, r.line - 1, r.symbol)
+        if result is None:
+            return {"error": f"symbol {r.symbol} not found at {r.filename}:{r.line}"}
+        line, column = result
+
+        resp = project.lsp().request_definition(r.filename, line, column)
 
         def cvt(r):
             return {
@@ -54,20 +60,24 @@ class GetInfoTool(LLMTool):
     class Model(BaseModel):
         filename: str = Field(description="The filename")
         line: int = Field(description="The 1-based line number")
-        column: int = Field(description="The 1-based column number")
+        symbol: str = Field(description="The symbol's text")
 
     schema = openai.pydantic_function_tool(
         Model,
         name="get_info",
-        description="Get info (like inferred types) about a piece of code",
+        description="Get info (like inferred types) about a code symbol at a particular location",
     )
 
     def exec(self, req: dict, project: Project):
         r = self.Model.model_validate(req)
-        filename = r.filename
-        line = r.line - 1
-        column = r.column - 1
-        resp = project.lsp().request_hover(filename, line, column)
+
+        srclines = project.get_lines(r.filename)
+        result = find_symbol(srclines, r.line - 1, r.symbol)
+        if result is None:
+            return {"error": "symbol {r.symbol} not found at {r.filename}:{r.line}"}
+        line, column = result
+
+        resp = project.lsp().request_hover(r.filename, line, column)
         if resp is None:
             return {
                 "error": "no info found for that location (maybe off-by-one error?)"

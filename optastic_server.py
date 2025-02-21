@@ -48,7 +48,6 @@ def optimize(project_root: Path, filename: str, lineno: int):
                 "content": f"I've identified line {filename}:{lineno} as a hotspot, reproduced below. Please help me optimize it.\n\n```{lang}\n{linestr}\n```",
             },
         ]
-        print(messages)
         response_msg = None
         MAX_ROUNDS = 15
         round_num = 0
@@ -63,8 +62,7 @@ def optimize(project_root: Path, filename: str, lineno: int):
                 tool_choice="auto",
             )
             response_msg = response.choices[0].message
-            print(response_msg)
-            messages.append({"role": "assistant", "content": response_msg.content})
+            messages.append(response_msg)  # type: ignore
             tool_calls = response_msg.tool_calls
 
             if tool_calls:

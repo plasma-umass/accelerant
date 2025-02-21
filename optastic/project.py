@@ -28,9 +28,12 @@ class Project:
         assert line >= 0
         return self.get_lines(filename, line, line)[0]
 
-    def get_lines(self, filename: str, sline: int, eline: int) -> List[str]:
+    def get_lines(
+        self, filename: str, sline: Optional[int] = None, eline: Optional[int] = None
+    ) -> List[str]:
         with open(self._root.joinpath(filename), "r") as f:
             lines = f.readlines()
-            sline = max(sline, 0)
-            eline = min(eline, len(lines))
+            sline = max(sline or 0, 0)
+            maxline = len(lines) - 1
+            eline = min(eline or maxline, maxline)
             return lines[sline : eline + 1]
