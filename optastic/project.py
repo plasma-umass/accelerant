@@ -32,7 +32,7 @@ class Project:
         self, filename: str, sline: Optional[int] = None, eline: Optional[int] = None
     ) -> List[str]:
         with open(self._root.joinpath(filename), "r") as f:
-            lines = f.readlines()
+            lines = list(map(lambda s: s.rstrip(), f.readlines()))
             sline = max(sline or 0, 0)
             maxline = len(lines) - 1
             eline = min(eline or maxline, maxline)

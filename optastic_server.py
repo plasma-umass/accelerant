@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from typing import Any, List
 from flask import Flask, request
+from llm_utils import number_group_of_lines
 import openai
 from rich import print as rprint
 from openai.types.chat.chat_completion_message_param import ChatCompletionMessageParam
@@ -39,7 +40,9 @@ def optimize(project_root: Path, filename: str, lineno: int):
             project, [LookupDefinitionTool(), GetCodeTool(), GetInfoTool()]
         )
 
-        linestr = project.get_line(filename, lineno - 1)
+        prettyline = number_group_of_lines(
+            [project.get_line(filename, lineno - 1)], lineno
+        )
         messages: List[ChatCompletionMessageParam] = [
             {
                 "role": "system",
@@ -47,7 +50,7 @@ def optimize(project_root: Path, filename: str, lineno: int):
             },
             {
                 "role": "user",
-                "content": f"I've identified line {filename}:{lineno} as a hotspot, reproduced below. Please help me optimize it.\n\n```{lang}\n{linestr}\n```",
+                "content": f"I've identified line {filename}:{lineno} as a hotspot, reproduced below. Please help me optimize it.\n\n```{lang}\n{prettyline}\n```",
             },
         ]
         for msg in messages:
