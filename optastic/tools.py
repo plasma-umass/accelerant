@@ -1,9 +1,9 @@
 from typing import Any, Dict, List
 from llm_utils import number_group_of_lines
 from pydantic import BaseModel, Field
-from multilspy.multilspy_types import Location
 import openai
 
+from optastic.lsp import request_implementation, syncexec, extract_relative_path
 from optastic.util import find_symbol
 from .project import Project
 from openai.types.chat import ChatCompletionToolParam
@@ -46,25 +46,41 @@ class LookupDefinitionTool(LLMTool):
             return {"error": f"symbol {r.symbol} not found at {r.filename}:{r.line}"}
         line, column = result
 
-        resp = project.lsp().request_definition(r.filename, line, column)
+        resp = syncexec(
+            project.lsp(),
+            request_implementation(
+                project.lsp().language_server, r.filename, line, column
+            ),
+        )
 
-        def cvt(r: Location, p: Project):
-            filename = r["relativePath"]
-            sline = r["range"]["start"]["line"]
-            eline = r["range"]["end"]["line"]
-            srclines = p.get_lines(filename, sline, eline)
-            if len(srclines) < 15:
-                source_code = number_group_of_lines(srclines, sline + 1)
+        def cvtLoc(r: dict, p: Project):
+            if "relativePath" in r:
+                filename = r["relativePath"]
             else:
-                source_code = None
+                filename = extract_relative_path(r["targetUri"], p)
+            range = r["targetRange"]
+            sline = range["start"]["line"]
+            eline = range["end"]["line"]
             return {
                 "filename": filename,
                 "startLine": sline + 1,
                 "endLine": eline + 1,
-                "sourceCode": source_code or "<too long>",
             }
 
-        return list(map(lambda r: cvt(r, project), resp))
+        def addSrc(loc: dict, p: Project):
+            srclines = p.get_lines(
+                loc["filename"], loc["startLine"] - 1, loc["endLine"] - 1
+            )
+            if len(srclines) < 100:
+                source_code = number_group_of_lines(srclines, loc["startLine"])
+            else:
+                source_code = number_group_of_lines(
+                    srclines[:1] + ["<...too long>"], loc["startLine"]
+                )
+            loc["sourceCode"] = source_code or "<too long>"
+            return loc
+
+        return list(map(lambda r: addSrc(cvtLoc(r, project), project), resp))
 
 
 class GetInfoTool(LLMTool):
