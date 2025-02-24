@@ -5,8 +5,12 @@ from flask import Flask, request
 from llm_utils import number_group_of_lines
 import openai
 from rich import print as rprint
-from openai.types.chat.chat_completion_message_param import ChatCompletionMessageParam
-from openai.types.chat.chat_completion import ChatCompletion
+from openai.types.chat import (
+    ChatCompletion,
+    ChatCompletionDeveloperMessageParam,
+    ChatCompletionMessageParam,
+    ChatCompletionSystemMessageParam,
+)
 
 from optastic.project import Project
 from optastic.tools import LookupDefinitionTool, GetCodeTool, GetInfoTool
@@ -25,6 +29,8 @@ def route_optimize():
 
 
 def optimize(project_root: Path, filename: str, lineno: int):
+    model_id = "gpt-4o"
+
     try:
         client = openai.OpenAI(timeout=30)
     except openai.OpenAIError:
@@ -44,10 +50,10 @@ def optimize(project_root: Path, filename: str, lineno: int):
             [project.get_line(filename, lineno - 1)], lineno
         )
         messages: List[ChatCompletionMessageParam] = [
-            {
-                "role": "system",
-                "content": f"You are a {lang} performance optimization assistant. Please optimize the user's program, making use of the provided tool calls that will let you explore the program. Never make assumptions about the program; use tool calls if you are not sure.",
-            },
+            _make_system_message(
+                model_id,
+                f"You are a {lang} performance optimization assistant. Please optimize the user's program, making use of the provided tool calls that will let you explore the program. Never make assumptions about the program; use tool calls if you are not sure.",
+            ),
             {
                 "role": "user",
                 "content": f"I've identified line {filename}:{lineno} as a hotspot, reproduced below. Please help me optimize it.\n\n```{lang}\n{prettyline}\n```",
@@ -64,7 +70,7 @@ def optimize(project_root: Path, filename: str, lineno: int):
         ) and round_num <= MAX_ROUNDS:
             tool_schemas = tool_runner.all_schemas()
             response = client.chat.completions.create(
-                model="gpt-4o",
+                model=model_id,
                 messages=messages,
                 tools=tool_schemas,
                 tool_choice="auto",
@@ -93,6 +99,17 @@ def optimize(project_root: Path, filename: str, lineno: int):
 
         assert response_msg is not None
         return response_msg.content
+
+
+def _make_system_message(
+    model_id: str, content: str
+) -> ChatCompletionSystemMessageParam | ChatCompletionDeveloperMessageParam:
+    if model_id.startswith("o"):
+        return {"role": "developer", "content": content}
+    elif model_id.startswith("gpt"):
+        return {"role": "system", "content": content}
+    else:
+        raise Exception(f"unknown model id {model_id}")
 
 
 def _print_message(msg: Any):
