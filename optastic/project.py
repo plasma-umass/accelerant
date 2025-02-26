@@ -37,3 +37,6 @@ class Project:
             maxline = len(lines) - 1
             eline = min(eline or maxline, maxline)
             return lines[sline : eline + 1]
+
+    def lang(self) -> str:
+        return self._lang

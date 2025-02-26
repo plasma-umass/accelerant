@@ -1,0 +1,115 @@
+import json
+from typing import Any, List
+from llm_utils import number_group_of_lines
+import openai
+from openai.types.chat import (
+    ChatCompletion,
+    ChatCompletionDeveloperMessageParam,
+    ChatCompletionMessageParam,
+    ChatCompletionSystemMessageParam,
+)
+from rich import print as rprint
+
+from optastic.project import Project
+from optastic.tools import GetCodeTool, GetInfoTool, LLMToolRunner, LookupDefinitionTool
+
+
+def run_chat(project: Project, filename: str, lineno: int, model_id=None):
+    if model_id is None:
+        model_id = "o3-mini"
+    lang = project.lang()
+
+    try:
+        client = openai.OpenAI(timeout=30)
+    except openai.OpenAIError:
+        print("you need an OpenAI key to use this tool.")
+        print("You can get a key here: https://platform.openai.com/api-keys.")
+        print("set the environment variable OPENAI_API_KEY to your key value.")
+        return
+
+    tool_runner = LLMToolRunner(
+        project, [LookupDefinitionTool(), GetCodeTool(), GetInfoTool()]
+    )
+
+    prettyline = number_group_of_lines([project.get_line(filename, lineno - 1)], lineno)
+    messages: List[ChatCompletionMessageParam] = [
+        _make_system_message(
+            model_id,
+            f"You are a {lang} performance optimization assistant. Please optimize the user's program, making use of the provided tool calls that will let you explore the program. Never make assumptions about the program; use tool calls if you are not sure.",
+        ),
+        {
+            "role": "user",
+            "content": f"I've identified line {filename}:{lineno} as a hotspot, reproduced below. Please help me optimize it.\n\n```{lang}\n{prettyline}\n```",
+        },
+    ]
+    for msg in messages:
+        _print_message(msg)
+
+    response_msg = None
+    MAX_ROUNDS = 15
+    round_num = 0
+    while (response_msg is None or response_msg.tool_calls) and round_num <= MAX_ROUNDS:
+        tool_schemas = tool_runner.all_schemas()
+        response = client.chat.completions.create(
+            model=model_id,
+            messages=messages,
+            tools=tool_schemas,
+            tool_choice="auto",
+        )
+        _print_completion(response)
+        response_msg = response.choices[0].message
+        messages.append(response_msg)  # type: ignore
+        tool_calls = response_msg.tool_calls
+
+        if tool_calls:
+            rprint("[blue]Tool responses:[/blue]")
+            for tool_call in tool_calls:
+                func_name = tool_call.function.name
+                func_args = json.loads(tool_call.function.arguments)
+                func_response = tool_runner.call(func_name, func_args)
+                rprint(f"  {func_name} =>", func_response)
+                messages.append(
+                    {
+                        "tool_call_id": tool_call.id,
+                        "role": "tool",
+                        "content": json.dumps(func_response),
+                    }
+                )
+
+        round_num += 1
+
+    assert response_msg is not None
+    return response_msg.content
+
+
+def _make_system_message(
+    model_id: str, content: str
+) -> ChatCompletionSystemMessageParam | ChatCompletionDeveloperMessageParam:
+    if model_id.startswith("o"):
+        return {"role": "developer", "content": content}
+    elif model_id.startswith("gpt"):
+        return {"role": "system", "content": content}
+    else:
+        raise Exception(f"unknown model id {model_id}")
+
+
+def _print_message(msg: Any):
+    if type(msg) is dict:
+        role = msg["role"]
+        content = msg["content"]
+    else:
+        role = msg.role
+        content = msg.content
+    rprint(f"[purple]{role}:[/purple] {content}")
+
+
+def _print_completion(completion: ChatCompletion):
+    response = completion.choices[0].message
+    rprint(f"[orange]Choice 1/{len(completion.choices)}[/orange]:")
+    _print_message(response)
+    if response.tool_calls:
+        rprint("[blue]Tool calls:[/blue]")
+        for call in response.tool_calls:
+            funcname = call.function.name
+            funcargs = call.function.arguments
+            rprint(f"  {funcname} =>", funcargs)
