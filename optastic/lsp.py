@@ -8,11 +8,10 @@ from multilspy.multilspy_utils import PathUtils
 from optastic.project import Project
 
 
-async def request_implementation(
+async def request_definition_full(
     lsp: LanguageServer, relative_file_path: str, line: int, column: int
 ):
     with lsp.open_file(relative_file_path):
-        # sending request to the language server and waiting for response
         response = await lsp.server.send.definition(
             {
                 "textDocument": {

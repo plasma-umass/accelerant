@@ -1,17 +1,13 @@
 from typing import Any, Dict, List
+from abc import ABC, abstractmethod
 from llm_utils import number_group_of_lines
 from pydantic import BaseModel, Field
 import openai
-
-from optastic.lsp import request_implementation, syncexec, extract_relative_path
-from optastic.util import find_symbol
-from .project import Project
 from openai.types.chat import ChatCompletionToolParam
 
-
-from abc import ABC, abstractmethod
-
-openai.pydantic_function_tool
+from optastic.lsp import request_definition_full, syncexec, extract_relative_path
+from optastic.util import find_symbol
+from optastic.project import Project
 
 
 class LLMTool(ABC):
@@ -50,7 +46,7 @@ class LookupDefinitionTool(LLMTool):
 
         resp = syncexec(
             project.lsp(),
-            request_implementation(
+            request_definition_full(
                 project.lsp().language_server, r.filename, line, column
             ),
         )
