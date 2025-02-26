@@ -43,7 +43,9 @@ class LookupDefinitionTool(LLMTool):
         srclines = project.get_lines(r.filename)
         result = find_symbol(srclines, r.line - 1, r.symbol)
         if result is None:
-            return {"error": f"symbol {r.symbol} not found at {r.filename}:{r.line}"}
+            return {
+                "error": f"symbol {r.symbol} not found at {r.filename}:{r.line} (wrong line number?)"
+            }
         line, column = result
 
         resp = syncexec(
@@ -101,14 +103,14 @@ class GetInfoTool(LLMTool):
         srclines = project.get_lines(r.filename)
         result = find_symbol(srclines, r.line - 1, r.symbol)
         if result is None:
-            return {"error": "symbol {r.symbol} not found at {r.filename}:{r.line}"}
+            return {
+                "error": "symbol {r.symbol} not found at {r.filename}:{r.line} (wrong line number?)"
+            }
         line, column = result
 
         resp = project.lsp().request_hover(r.filename, line, column)
         if resp is None:
-            return {
-                "error": "no info found for that location (maybe off-by-one error?)"
-            }
+            return {"error": "no info found for that location (wrong line number?)"}
         return {"contents": resp["contents"]}
 
 

@@ -3,15 +3,28 @@ from typing import Any, List
 from llm_utils import number_group_of_lines
 import openai
 from openai.types.chat import (
-    ChatCompletion,
     ChatCompletionDeveloperMessageParam,
     ChatCompletionMessageParam,
     ChatCompletionSystemMessageParam,
+    ParsedChatCompletion,
 )
+from pydantic import BaseModel
 from rich import print as rprint
 
 from optastic.project import Project
 from optastic.tools import GetCodeTool, GetInfoTool, LLMToolRunner, LookupDefinitionTool
+
+
+class OptimizationSuggestion(BaseModel):
+    filename: str
+    startLine: int
+    endLine: int
+    newCode: str
+
+
+class OptimizationSuite(BaseModel):
+    highLevelSummary: str
+    suggestions: List[OptimizationSuggestion]
 
 
 def run_chat(project: Project, filename: str, lineno: int, model_id=None):
@@ -20,7 +33,7 @@ def run_chat(project: Project, filename: str, lineno: int, model_id=None):
     lang = project.lang()
 
     try:
-        client = openai.OpenAI(timeout=30)
+        client = openai.OpenAI(timeout=90)
     except openai.OpenAIError:
         print("you need an OpenAI key to use this tool.")
         print("You can get a key here: https://platform.openai.com/api-keys.")
@@ -31,15 +44,17 @@ def run_chat(project: Project, filename: str, lineno: int, model_id=None):
         project, [LookupDefinitionTool(), GetCodeTool(), GetInfoTool()]
     )
 
-    prettyline = number_group_of_lines([project.get_line(filename, lineno - 1)], lineno)
+    prettyline = number_group_of_lines(
+        project.get_lines(filename, lineno - 1 - 5, lineno - 1 + 5), lineno - 5
+    )
     messages: List[ChatCompletionMessageParam] = [
         _make_system_message(
             model_id,
-            f"You are a {lang} performance optimization assistant. Please optimize the user's program, making use of the provided tool calls that will let you explore the program. Never make assumptions about the program; use tool calls if you are not sure.",
+            f"You are a {lang} performance optimization assistant. You NEVER make assumptions or express hypotheticals about what the user's program does. Instead, you make ample use of the tool calls available to you to thoroughly explore the user's program. You always give CONCRETE code suggestions.",
         ),
         {
             "role": "user",
-            "content": f"I've identified line {filename}:{lineno} as a hotspot, reproduced below. Please help me optimize it.\n\n```{lang}\n{prettyline}\n```",
+            "content": f"I've identified line {filename}:{lineno} as a hotspot, reproduced below. Please help me optimize it by exploring the program and giving me CONCRETE suggestions.\n\n```{lang}\n{prettyline}\n```",
         },
     ]
     for msg in messages:
@@ -50,11 +65,12 @@ def run_chat(project: Project, filename: str, lineno: int, model_id=None):
     round_num = 0
     while (response_msg is None or response_msg.tool_calls) and round_num <= MAX_ROUNDS:
         tool_schemas = tool_runner.all_schemas()
-        response = client.chat.completions.create(
+        response = client.beta.chat.completions.parse(
             model=model_id,
             messages=messages,
             tools=tool_schemas,
             tool_choice="auto",
+            response_format=OptimizationSuite,
         )
         _print_completion(response)
         response_msg = response.choices[0].message
@@ -103,10 +119,26 @@ def _print_message(msg: Any):
     rprint(f"[purple]{role}:[/purple] {content}")
 
 
-def _print_completion(completion: ChatCompletion):
+def _print_parsed_completion(parsed: OptimizationSuite):
+    rprint("[underline]High-level Summary[/underline]")
+    rprint(parsed.highLevelSummary)
+    rprint()
+
+    for sugg in parsed.suggestions:
+        rprint(
+            f"[underline]In {sugg.filename}, replace lines {sugg.startLine} to {sugg.endLine}:[/underline]"
+        )
+        rprint()
+        rprint(sugg.newCode)
+        rprint("------\n")
+
+
+def _print_completion(completion: ParsedChatCompletion[OptimizationSuite]):
     response = completion.choices[0].message
     rprint(f"[orange]Choice 1/{len(completion.choices)}[/orange]:")
     _print_message(response)
+    if response.parsed is not None:
+        _print_parsed_completion(response.parsed)
     if response.tool_calls:
         rprint("[blue]Tool calls:[/blue]")
         for call in response.tool_calls:
