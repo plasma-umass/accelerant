@@ -33,9 +33,7 @@ class OptimizationSuite(BaseModel):
     suggestions: List[OptimizationSuggestion]
 
 
-def run_chat(project: Project, filename: str, lineno: int, model_id=None):
-    if model_id is None:
-        model_id = "o3-mini"
+def run_chat(project: Project, filename: str, lineno: int, model_id: str):
     lang = project.lang()
 
     try:

@@ -9,14 +9,20 @@ app = Flask(__name__)
 
 @app.route("/optimize")
 def route_optimize():
-    project = Path(request.args.get("project"))
+    project = request.args.get("project", type=Path)
+    if project is None:
+        raise Exception("invalid project path")
     filename = request.args.get("filename")
-    lineno = int(request.args.get("line"))
-    response = optimize(project, filename, lineno)
+    lineno = request.args.get("line", type=int)
+    if lineno is None:
+        raise Exception("invalid line number")
+    model_id = request.args.get("modelId", "o3-mini")
+
+    response = optimize(project, filename, lineno, model_id)
     return response
 
 
-def optimize(project_root: Path, filename: str, lineno: int):
+def optimize(project_root: Path, filename: str, lineno: int, model_id: str) -> str:
     project = Project(project_root, "rust")
     with project.lsp().start_server():
-        return run_chat(project, filename, lineno)
+        return run_chat(project, filename, lineno, model_id)
