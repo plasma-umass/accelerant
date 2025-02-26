@@ -29,7 +29,7 @@ def route_optimize():
 
 
 def optimize(project_root: Path, filename: str, lineno: int):
-    model_id = "gpt-4o"
+    model_id = "o3-mini"
 
     try:
         client = openai.OpenAI(timeout=30)
