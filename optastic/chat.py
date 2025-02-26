@@ -12,7 +12,13 @@ from pydantic import BaseModel
 from rich import print as rprint
 
 from optastic.project import Project
-from optastic.tools import GetCodeTool, GetInfoTool, LLMToolRunner, LookupDefinitionTool
+from optastic.tools import (
+    GetReferencesTool,
+    GetSurroundingCodeTool,
+    GetTypeAndDocsTool,
+    LLMToolRunner,
+    GetDefinitionTool,
+)
 
 
 class OptimizationSuggestion(BaseModel):
@@ -41,7 +47,13 @@ def run_chat(project: Project, filename: str, lineno: int, model_id=None):
         return
 
     tool_runner = LLMToolRunner(
-        project, [LookupDefinitionTool(), GetCodeTool(), GetInfoTool()]
+        project,
+        [
+            GetDefinitionTool(),
+            GetReferencesTool(),
+            GetTypeAndDocsTool(),
+            GetSurroundingCodeTool(),
+        ],
     )
 
     prettyline = number_group_of_lines(

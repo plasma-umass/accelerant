@@ -31,3 +31,9 @@ def find_symbol(
         return None
 
     return (lineno, character)
+
+
+def truncate_for_llm(text: str, char_limit: int):
+    if len(text) > char_limit:
+        return text[:char_limit] + "[...too long...]"
+    return text

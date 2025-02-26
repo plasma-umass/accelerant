@@ -6,7 +6,7 @@ import openai
 from openai.types.chat import ChatCompletionToolParam
 
 from optastic.lsp import request_definition_full, syncexec, extract_relative_path
-from optastic.util import find_symbol
+from optastic.util import find_symbol, truncate_for_llm
 from optastic.project import Project
 
 
@@ -21,7 +21,7 @@ class LLMTool(ABC):
         pass
 
 
-class LookupDefinitionTool(LLMTool):
+class GetDefinitionTool(LLMTool):
     class Model(BaseModel):
         filename: str = Field(description="The filename")
         line: int = Field(description="The 1-based line number")
@@ -29,8 +29,8 @@ class LookupDefinitionTool(LLMTool):
 
     schema = openai.pydantic_function_tool(
         Model,
-        name="lookup_definition",
-        description="Lookup the definition of a symbol at a particular location",
+        name="get_definition",
+        description="Get the definition (including source code) of a symbol at a particular location",
     )
 
     def exec(self, req: dict, project: Project) -> Any:
@@ -50,38 +50,12 @@ class LookupDefinitionTool(LLMTool):
                 project.lsp().language_server, r.filename, line, column
             ),
         )
-
-        def cvtLoc(r: dict, p: Project):
-            if "relativePath" in r:
-                filename = r["relativePath"]
-            else:
-                filename = extract_relative_path(r["targetUri"], p)
-            range = r["targetRange"]
-            sline = range["start"]["line"]
-            eline = range["end"]["line"]
-            return {
-                "filename": filename,
-                "startLine": sline + 1,
-                "endLine": eline + 1,
-            }
-
-        def addSrc(loc: dict, p: Project):
-            srclines = p.get_lines(
-                loc["filename"], loc["startLine"] - 1, loc["endLine"] - 1
-            )
-            if len(srclines) < 100:
-                source_code = number_group_of_lines(srclines, loc["startLine"])
-            else:
-                source_code = number_group_of_lines(
-                    srclines[:1] + ["<...too long>"], loc["startLine"]
-                )
-            loc["sourceCode"] = source_code or "<too long>"
-            return loc
-
-        return list(map(lambda r: addSrc(cvtLoc(r, project), project), resp))
+        return list(
+            map(lambda r: add_src_to_loc(convert_lsp_loc(r, project), project), resp)
+        )
 
 
-class GetInfoTool(LLMTool):
+class GetReferencesTool(LLMTool):
     class Model(BaseModel):
         filename: str = Field(description="The filename")
         line: int = Field(description="The 1-based line number")
@@ -89,8 +63,70 @@ class GetInfoTool(LLMTool):
 
     schema = openai.pydantic_function_tool(
         Model,
-        name="get_info",
-        description="Get info (like inferred types) about a code symbol at a particular location",
+        name="get_references",
+        description="Get a list of references, from elsewhere in the code, to a code symbol at a particular location",
+    )
+
+    def exec(self, req: dict, project: Project) -> Any:
+        r = self.Model.model_validate(req)
+
+        srclines = project.get_lines(r.filename)
+        result = find_symbol(srclines, r.line - 1, r.symbol)
+        if result is None:
+            return {
+                "error": "symbol {r.symbol} not found at {r.filename}:{r.line} (wrong line number?)"
+            }
+        line, column = result
+
+        resp = project.lsp().request_references(r.filename, line, column)
+        return list(
+            map(
+                lambda r: add_src_to_loc(convert_lsp_loc(dict(r), project), project),
+                resp,
+            )
+        )
+
+
+def convert_lsp_loc(r: dict, p: Project) -> dict:
+    if "relativePath" in r:
+        filename = r["relativePath"]
+    else:
+        filename = extract_relative_path(r["targetUri"], p)
+    if "targetRange" in r:
+        range = r["targetRange"]
+    else:
+        range = r["range"]
+    sline = range["start"]["line"]
+    eline = range["end"]["line"]
+    return {
+        "filename": filename,
+        "startLine": sline + 1,
+        "endLine": eline + 1,
+    }
+
+
+def add_src_to_loc(loc: dict, p: Project) -> dict:
+    srclines = p.get_lines(loc["filename"], loc["startLine"] - 1, loc["endLine"] - 1)
+    if len(srclines) < 100:
+        source_code = number_group_of_lines(srclines, loc["startLine"])
+    else:
+        source_code = number_group_of_lines(
+            srclines[:1] + ["<...too long>"], loc["startLine"]
+        )
+    loc["sourceCode"] = source_code or "<too long>"
+    return loc
+
+
+class GetTypeAndDocsTool(LLMTool):
+    class Model(BaseModel):
+        filename: str = Field(description="The filename")
+        line: int = Field(description="The 1-based line number")
+        symbol: str = Field(description="The symbol's text")
+
+    schema = openai.pydantic_function_tool(
+        Model,
+        name="get_type_and_docs",
+        description="Get info (like inferred types and documentation) about a code symbol at a particular location",
     )
 
     def exec(self, req: dict, project: Project) -> Any:
@@ -107,17 +143,21 @@ class GetInfoTool(LLMTool):
         resp = project.lsp().request_hover(r.filename, line, column)
         if resp is None:
             return {"error": "no info found for that location (wrong line number?)"}
-        return {"contents": resp["contents"]}
+        if type(resp["contents"]) is dict and "kind" in resp["contents"]:
+            contents = resp["contents"]["value"]
+        else:
+            raise Exception(f"unsupported textDocument/hover response: {resp}")
+        return truncate_for_llm(contents, 1000)
 
 
-class GetCodeTool(LLMTool):
+class GetSurroundingCodeTool(LLMTool):
     class Model(BaseModel):
         filename: str = Field(description="The filename")
         line: int = Field(description="The 1-based line number")
 
     schema = openai.pydantic_function_tool(
         Model,
-        name="get_code",
+        name="get_surrounding_code",
         description="Get several lines of source code near a given line number",
     )
 
@@ -125,7 +165,7 @@ class GetCodeTool(LLMTool):
         r = self.Model.model_validate(req)
         filename = r.filename
         line = int(r.line) - 1
-        sline, eline = line - 3, line + 3
+        sline, eline = line - 5, line + 5
         lines = project.get_lines(filename, sline, eline)
         return number_group_of_lines(lines, sline + 1)
 
