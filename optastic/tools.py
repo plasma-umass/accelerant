@@ -167,7 +167,7 @@ class GetSurroundingCodeTool(LLMTool):
         line = int(r.line) - 1
         sline, eline = line - 5, line + 5
         lines = project.get_lines(filename, sline, eline)
-        return number_group_of_lines(lines, sline + 1)
+        return number_group_of_lines(lines, max(sline + 1, 1))
 
 
 class LLMToolRunner:
