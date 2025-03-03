@@ -1,4 +1,5 @@
 import json
+from rich.markup import escape as rescape
 from typing import Any, List
 from llm_utils import number_group_of_lines
 import openai
@@ -126,20 +127,24 @@ def _print_message(msg: Any):
     else:
         role = msg.role
         content = msg.content
-    rprint(f"[purple]{role}:[/purple] {content}")
+    if type(content) is str:
+        content_safe = rescape(content)
+    else:
+        content_safe = content
+    rprint(f"[purple]{rescape(role)}:[/purple] {content_safe}")
 
 
 def _print_parsed_completion(parsed: OptimizationSuite):
     rprint("[underline]High-level Summary[/underline]")
-    rprint(parsed.highLevelSummary)
+    rprint(rescape(parsed.highLevelSummary))
     rprint()
 
     for sugg in parsed.suggestions:
         rprint(
-            f"[underline]In {sugg.filename}, replace lines {sugg.startLine} to {sugg.endLine}:[/underline]"
+            f"[underline]In {rescape(sugg.filename)}, replace lines {sugg.startLine} to {sugg.endLine}:[/underline]"
         )
         rprint()
-        rprint(sugg.newCode)
+        rprint(rescape(sugg.newCode))
         rprint("------\n")
 
 
@@ -154,4 +159,4 @@ def _print_completion(completion: ParsedChatCompletion[OptimizationSuite]):
         for call in response.tool_calls:
             funcname = call.function.name
             funcargs = call.function.arguments
-            rprint(f"  {funcname} =>", funcargs)
+            rprint(f"  {rescape(funcname)} =>", funcargs)
