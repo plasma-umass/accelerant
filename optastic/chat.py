@@ -73,7 +73,7 @@ def run_chat(project: Project, filename: str, lineno: int, model_id: str):
         _print_message(msg)
 
     response_msg = None
-    MAX_ROUNDS = 15
+    MAX_ROUNDS = 30
     round_num = 0
     while (response_msg is None or response_msg.tool_calls) and round_num <= MAX_ROUNDS:
         tool_schemas = tool_runner.all_schemas()
@@ -95,7 +95,7 @@ def run_chat(project: Project, filename: str, lineno: int, model_id: str):
                 func_name = tool_call.function.name
                 func_args = json.loads(tool_call.function.arguments)
                 func_response = tool_runner.call(func_name, func_args)
-                rprint(f"  {func_name} =>", func_response)
+                rprint(f"  {func_name} =>", smart_escape(func_response))
                 messages.append(
                     {
                         "tool_call_id": tool_call.id,
@@ -128,11 +128,7 @@ def _print_message(msg: Any):
     else:
         role = msg.role
         content = msg.content
-    if type(content) is str:
-        content_safe = rescape(content)
-    else:
-        content_safe = content
-    rprint(f"[purple]{rescape(role)}:[/purple] {content_safe}")
+    rprint(f"[purple]{rescape(role)}:[/purple] {smart_escape(content)}")
 
 
 def _print_parsed_completion(parsed: OptimizationSuite):
@@ -161,3 +157,10 @@ def _print_completion(completion: ParsedChatCompletion[OptimizationSuite]):
             funcname = call.function.name
             funcargs = call.function.arguments
             rprint(f"  {rescape(funcname)} =>", funcargs)
+
+
+def smart_escape(thing: Any) -> Any:
+    if type(thing) is str:
+        return rescape(thing)
+    else:
+        return thing

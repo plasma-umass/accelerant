@@ -79,12 +79,21 @@ class GetReferencesTool(LLMTool):
         line, column = result["line_idx"], result["end_chr"]
 
         resp = project.lsp().request_references(r.filename, line, column)
-        return list(
+        results = list(
             map(
                 lambda r: add_src_to_loc(convert_lsp_loc(dict(r), project), project),
                 resp,
             )
         )
+        max_results = 10
+        if len(results) > max_results:
+            return results[:max_results] + [
+                {
+                    "placeholder": f"{len(results) - max_results} more results omitted due to space limitations"
+                }
+            ]
+        else:
+            return results
 
 
 def convert_lsp_loc(r: dict, p: Project) -> dict:
