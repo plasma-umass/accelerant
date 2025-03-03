@@ -1,10 +1,14 @@
-from typing import List, Optional
+from typing import List, Optional, TypedDict
+
+
+class SymbolLoc(TypedDict):
+    line_idx: int
+    start_chr: int
+    end_chr: int  # inclusive
 
 
 # Adapted from chatdbg.
-def find_symbol(
-    lines: List[str], lineno: int, symbol: str
-) -> Optional[tuple[int, int]]:
+def find_symbol(lines: List[str], lineno: int, symbol: str) -> Optional[SymbolLoc]:
     # We just return the first match here. Maybe we should find all definitions.
     character = lines[lineno].find(symbol)
 
@@ -30,7 +34,13 @@ def find_symbol(
     if character == -1:
         return None
 
-    return (lineno, character)
+    assert len(symbol) > 0
+
+    return {
+        "line_idx": lineno,
+        "start_chr": character,
+        "end_chr": character + len(symbol) - 1,
+    }
 
 
 def truncate_for_llm(text: str, char_limit: int):

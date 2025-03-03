@@ -42,7 +42,7 @@ class GetDefinitionTool(LLMTool):
             return {
                 "error": f"symbol {r.symbol} not found at {r.filename}:{r.line} (wrong line number?)"
             }
-        line, column = result
+        line, column = result["line_idx"], result["end_chr"]
 
         resp = syncexec(
             project.lsp(),
@@ -76,7 +76,7 @@ class GetReferencesTool(LLMTool):
             return {
                 "error": "symbol {r.symbol} not found at {r.filename}:{r.line} (wrong line number?)"
             }
-        line, column = result
+        line, column = result["line_idx"], result["end_chr"]
 
         resp = project.lsp().request_references(r.filename, line, column)
         return list(
@@ -138,7 +138,7 @@ class GetTypeAndDocsTool(LLMTool):
             return {
                 "error": "symbol {r.symbol} not found at {r.filename}:{r.line} (wrong line number?)"
             }
-        line, column = result
+        line, column = result["line_idx"], result["end_chr"]
 
         resp = project.lsp().request_hover(r.filename, line, column)
         if resp is None:
