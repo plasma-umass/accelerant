@@ -23,7 +23,7 @@ lsprotocol==2023.0.1
 markdown-it-py==3.0.0
 MarkupSafe==3.0.2
 mdurl==0.1.2
-multilspy==0.0.12
+multilspy==0.0.14
 mypy==1.15.0
 mypy-extensions==1.0.0
 openai==1.63.2
