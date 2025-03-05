@@ -17,15 +17,15 @@ def route_optimize() -> str:
         raise Exception("invalid project path")
     filename = request.args.get("filename")
     lineno = request.args.get("line", type=int)
-    perf_out_path = request.args.get("perfOutPath", type=Path)
+    perf_data_path = request.args.get("perfDataPath", type=Path)
     model_id = request.args.get("modelId", "o3-mini")
 
-    if (filename is None or lineno is None) and perf_out_path is None:
+    if (filename is None or lineno is None) and perf_data_path is None:
         raise Exception(
-            "at least one of (filename and line) or (perfOutPath) must be passed"
+            "at least one of (filename and line) or (perfDataPath) must be passed"
         )
 
-    response = optimize(project, filename, lineno, perf_out_path, model_id)
+    response = optimize(project, filename, lineno, perf_data_path, model_id)
     return response
 
 
@@ -33,13 +33,13 @@ def optimize(
     project_root: Path,
     filename: Optional[str],
     lineno: Optional[int],
-    perf_out_path: Optional[Path],
+    perf_data_path: Optional[Path],
     model_id: str,
 ) -> str:
     project = Project(project_root, "rust")
     perf_data = None
-    if perf_out_path:
-        perf_data = PerfData(perf_out_path, project)
+    if perf_data_path:
+        perf_data = PerfData(perf_data_path, project)
     if filename is None or lineno is None:
         assert perf_data is not None
         abspath, lineno = perf_data.normalize_and_sort()[0][0]

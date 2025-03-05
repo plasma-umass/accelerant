@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 from typing import Callable, Iterator, List, Optional
 
 from optastic.project import Project
@@ -7,23 +8,24 @@ from optastic.project import Project
 class PerfData:
     counts: dict[tuple[Path, int], int]
 
-    def __init__(self, perf_out_path: Path, project: Project):
+    def __init__(self, perf_data_path: Path, project: Project):
         def is_srcline_good(path: Path):
             return project._root in path.parents
 
+        perf_lines = iter(run_perf_script(perf_data_path))
+
         counts = {}
-        with open(perf_out_path) as f:
-            while True:
-                try:
-                    result = extract_srcline_from_perf_entry(iter(f), is_srcline_good)
-                    if not result:
-                        continue
-                    sym, lineno = result
-                except StopIteration:
-                    break
-                if (sym, lineno) not in counts:
-                    counts[(sym, lineno)] = 0
-                counts[(sym, lineno)] += 1
+        while True:
+            try:
+                result = extract_srcline_from_perf_entry(perf_lines, is_srcline_good)
+                if not result:
+                    continue
+                sym, lineno = result
+            except StopIteration:
+                break
+            if (sym, lineno) not in counts:
+                counts[(sym, lineno)] = 0
+            counts[(sym, lineno)] += 1
         self.counts = counts
 
     def normalize_and_sort(self) -> List[tuple[tuple[Path, int], float]]:
@@ -65,3 +67,16 @@ def extract_srcline_from_perf_entry(
             return path, lineno
 
     return None
+
+
+def run_perf_script(perf_data_path: Path) -> List[str]:
+    PERF_CMD = [
+        "perf",
+        "script",
+        "-F+srcline",
+        "--full-source-path",
+        "-i",
+        str(perf_data_path),
+    ]
+    out_bytes = subprocess.check_output(PERF_CMD)
+    return out_bytes.decode().splitlines()
