@@ -56,7 +56,8 @@ def run_chat(project: Project, filename: str, lineno: int, model_id: str):
     )
 
     prettyline = number_group_of_lines(
-        project.get_lines(filename, lineno - 1 - 5, lineno - 1 + 5), lineno - 5
+        project.get_lines(filename, lineno - 1 - 5, lineno - 1 + 5),
+        max(lineno - 5, 1),
     )
     messages: List[ChatCompletionMessageParam] = [
         _make_system_message(
