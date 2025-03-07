@@ -21,7 +21,7 @@ class LLMTool(ABC):
         pass
 
 
-class GetDefinitionTool(LLMTool):
+class GetInfoTool(LLMTool):
     class Model(BaseModel):
         filename: str = Field(description="The filename")
         line: int = Field(description="The 1-based line number")
@@ -29,8 +29,8 @@ class GetDefinitionTool(LLMTool):
 
     schema = openai.pydantic_function_tool(
         Model,
-        name="get_definition",
-        description="Get the definition (including source code) of a symbol at a particular location",
+        name="get_info",
+        description="Get the definition (including source code), type, and docs of a symbol at a particular location",
     )
 
     def exec(self, req: dict, project: Project) -> Any:
@@ -51,7 +51,16 @@ class GetDefinitionTool(LLMTool):
             ),
         )
         return list(
-            map(lambda r: add_src_to_loc(convert_lsp_loc(r, project), project), resp)
+            map(
+                lambda e: add_info_to_loc(
+                    add_src_to_loc(convert_lsp_loc(e, project), project),
+                    project,
+                    r.filename,
+                    line,
+                    column,
+                ),
+                resp,
+            )
         )
 
 
@@ -126,37 +135,23 @@ def add_src_to_loc(loc: dict, p: Project) -> dict:
     return loc
 
 
-class GetTypeAndDocsTool(LLMTool):
-    class Model(BaseModel):
-        filename: str = Field(description="The filename")
-        line: int = Field(description="The 1-based line number")
-        symbol: str = Field(description="The symbol's text")
+def add_info_to_loc(
+    loc: dict, p: Project, filename: str, line: int, column: int
+) -> dict:
+    info = get_hover(p, filename, line, column)
+    loc["info"] = info
+    return loc
 
-    schema = openai.pydantic_function_tool(
-        Model,
-        name="get_type_and_docs",
-        description="Get info (like inferred types and documentation) about a code symbol at a particular location",
-    )
 
-    def exec(self, req: dict, project: Project) -> Any:
-        r = self.Model.model_validate(req)
-
-        srclines = project.get_lines(r.filename)
-        result = find_symbol(srclines, r.line - 1, r.symbol)
-        if result is None:
-            return {
-                "error": "symbol {r.symbol} not found at {r.filename}:{r.line} (wrong line number?)"
-            }
-        line, column = result["line_idx"], result["end_chr"]
-
-        resp = project.lsp().request_hover(r.filename, line, column)
-        if resp is None:
-            return {"error": "no info found for that location (wrong line number?)"}
-        if type(resp["contents"]) is dict and "kind" in resp["contents"]:
-            contents = resp["contents"]["value"]
-        else:
-            raise Exception(f"unsupported textDocument/hover response: {resp}")
-        return truncate_for_llm(contents, 1000)
+def get_hover(project: Project, filename: str, line: int, column: int):
+    resp = project.lsp().request_hover(filename, line, column)
+    if resp is None:
+        return None
+    if type(resp["contents"]) is dict and "kind" in resp["contents"]:
+        contents = resp["contents"]["value"]
+    else:
+        raise Exception(f"unsupported textDocument/hover response: {resp}")
+    return truncate_for_llm(contents, 1000)
 
 
 class GetSurroundingCodeTool(LLMTool):

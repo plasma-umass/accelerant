@@ -14,11 +14,10 @@ from rich import print as rprint
 
 from optastic.project import Project
 from optastic.tools import (
+    GetInfoTool,
     GetReferencesTool,
     GetSurroundingCodeTool,
-    GetTypeAndDocsTool,
     LLMToolRunner,
-    GetDefinitionTool,
 )
 
 
@@ -48,9 +47,8 @@ def run_chat(project: Project, filename: str, lineno: int, model_id: str):
     tool_runner = LLMToolRunner(
         project,
         [
-            GetDefinitionTool(),
+            GetInfoTool(),
             GetReferencesTool(),
-            GetTypeAndDocsTool(),
             GetSurroundingCodeTool(),
         ],
     )
