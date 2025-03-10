@@ -1,3 +1,13 @@
 __pycache__/
+.env
 .venv/
 target/
+
+# Ignore example repos, but specifically includes the README, cloning file, and the analysis notebook 
+examples/*
+
+!examples/crates_io_analysis
+examples/crates_io_analysis/*
+!examples/crates_io_analysis/scratch.ipynb
+!examples/clone.sh
+!examples/README.md
