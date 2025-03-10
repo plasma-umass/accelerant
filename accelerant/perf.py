@@ -2,7 +2,7 @@ from pathlib import Path
 import subprocess
 from typing import Callable, Iterator, List, Optional
 
-from optastic.project import Project
+from accelerant.project import Project
 
 
 class PerfData:

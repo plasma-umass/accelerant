@@ -5,9 +5,9 @@ from pydantic import BaseModel, Field
 import openai
 from openai.types.chat import ChatCompletionToolParam
 
-from optastic.lsp import request_definition_full, syncexec, extract_relative_path
-from optastic.util import find_symbol, truncate_for_llm
-from optastic.project import Project
+from accelerant.lsp import request_definition_full, syncexec, extract_relative_path
+from accelerant.util import find_symbol, truncate_for_llm
+from accelerant.project import Project
 
 
 class LLMTool(ABC):

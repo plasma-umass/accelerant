@@ -1,4 +1,4 @@
-# Optastic
+# Accelerant
 
 ## Setup
 
@@ -11,7 +11,7 @@
 In one terminal, activate the virtualenv and run
 
 ```console
-$ flask --app=optastic_server run
+$ flask --app=accelerant_server run
 ```
 
 In another terminal, run

@@ -5,7 +5,7 @@ from typing import Any, Coroutine
 from multilspy import LanguageServer, SyncLanguageServer
 from multilspy.multilspy_utils import PathUtils
 
-from optastic.project import Project
+from accelerant.project import Project
 
 
 async def request_definition_full(

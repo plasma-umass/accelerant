@@ -3,9 +3,9 @@ from pathlib import Path
 from typing import Optional
 from flask import Flask, request
 
-from optastic.chat import run_chat
-from optastic.perf import PerfData
-from optastic.project import Project
+from accelerant.chat import run_chat
+from accelerant.perf import PerfData
+from accelerant.project import Project
 
 app = Flask(__name__)
 

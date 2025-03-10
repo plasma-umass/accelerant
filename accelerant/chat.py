@@ -12,8 +12,8 @@ from openai.types.chat import (
 from pydantic import BaseModel
 from rich import print as rprint
 
-from optastic.project import Project
-from optastic.tools import (
+from accelerant.project import Project
+from accelerant.tools import (
     GetInfoTool,
     GetReferencesTool,
     GetSurroundingCodeTool,
