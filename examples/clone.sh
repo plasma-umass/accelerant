@@ -2,6 +2,8 @@
 REPOS=(
     https://github.com/rust-lang/rustc-dev-guide 
     https://github.com/bytecodealliance/wasmtime
+    https://github.com/unicode-org/icu4x/
+    https://github.com/sval-rs/sval
 )
 
 for repo in "${REPOS[@]}"; do
