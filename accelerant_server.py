@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Optional
 from flask import Flask, request
 
-from accelerant.chat import run_chat
+from accelerant.chat import optimize_line
 from accelerant.perf import PerfData
 from accelerant.project import Project
 
@@ -46,4 +46,4 @@ def optimize(
         abspath, lineno = hotspot_loc.path, hotspot_loc.line
         filename = os.path.relpath(abspath, project._root)
     with project.lsp().start_server():
-        return run_chat(project, filename, lineno, model_id)
+        return optimize_line(project, filename, lineno, model_id)

@@ -3,6 +3,7 @@ from rich.markup import escape as rescape
 from typing import Any, List
 from llm_utils import number_group_of_lines
 import openai
+from openai import NotGiven, NOT_GIVEN
 from openai.types.chat import (
     ChatCompletionDeveloperMessageParam,
     ChatCompletionMessageParam,
@@ -33,7 +34,7 @@ class OptimizationSuite(BaseModel):
     suggestions: List[OptimizationSuggestion]
 
 
-def run_chat(project: Project, filename: str, lineno: int, model_id: str):
+def optimize_line(project: Project, filename: str, lineno: int, model_id: str) -> str:
     lang = project.lang()
 
     try:
@@ -42,7 +43,7 @@ def run_chat(project: Project, filename: str, lineno: int, model_id: str):
         print("you need an OpenAI key to use this tool.")
         print("You can get a key here: https://platform.openai.com/api-keys.")
         print("set the environment variable OPENAI_API_KEY to your key value.")
-        return
+        raise Exception()
 
     tool_runner = LLMToolRunner(
         project,
@@ -60,13 +61,39 @@ def run_chat(project: Project, filename: str, lineno: int, model_id: str):
     messages: List[ChatCompletionMessageParam] = [
         _make_system_message(
             model_id,
+            f"You are a {lang} performance optimization assistant. You NEVER make assumptions or express hypotheticals about what the user's program does. Instead, you make ample use of the tool calls available to you to thoroughly explore the user's program.",
+        ),
+        {
+            "role": "user",
+            "content": f"I've identified line {filename}:{lineno} as a hotspot, reproduced below. Please explore the code and try to understand what is happening and why it is slow. Do NOT give suggestions at this point; just reason about what's happening. BRIEFLY explain anything that could lead to poor performance.\n\n```{lang}\n{prettyline}\n```",
+        },
+    ]
+    explanation = run_chat(
+        messages, client, model_id, tool_runner, response_format=NOT_GIVEN
+    )
+
+    messages = [
+        _make_system_message(
+            model_id,
             f"You are a {lang} performance optimization assistant. You NEVER make assumptions or express hypotheticals about what the user's program does. Instead, you make ample use of the tool calls available to you to thoroughly explore the user's program. You always give CONCRETE code suggestions.",
         ),
         {
             "role": "user",
-            "content": f"I've identified line {filename}:{lineno} as a hotspot, reproduced below. Please help me optimize it by exploring the program and giving me CONCRETE suggestions.\n\n```{lang}\n{prettyline}\n```",
+            "content": f"I've identified line {filename}:{lineno} as a hotspot, reproduced below.\n\n```{lang}\n{prettyline}\n```\n\nPlease help me optimize it. You know that: {explanation}",
         },
     ]
+    return run_chat(
+        messages, client, model_id, tool_runner, response_format=OptimizationSuite
+    )
+
+
+def run_chat[RespFormat](
+    messages: List[ChatCompletionMessageParam],
+    client: openai.OpenAI,
+    model_id: str,
+    tool_runner: LLMToolRunner,
+    response_format: type[RespFormat] | NotGiven,
+) -> str:
     for msg in messages:
         _print_message(msg)
 
@@ -80,7 +107,7 @@ def run_chat(project: Project, filename: str, lineno: int, model_id: str):
             messages=messages,
             tools=tool_schemas,
             tool_choice="auto",
-            response_format=OptimizationSuite,
+            response_format=response_format,
         )
         _print_completion(response)
         response_msg = response.choices[0].message
@@ -104,7 +131,7 @@ def run_chat(project: Project, filename: str, lineno: int, model_id: str):
 
         round_num += 1
 
-    assert response_msg is not None
+    assert response_msg is not None and response_msg.content is not None
     return response_msg.content
 
 
@@ -143,12 +170,15 @@ def _print_parsed_completion(parsed: OptimizationSuite):
         rprint("------\n")
 
 
-def _print_completion(completion: ParsedChatCompletion[OptimizationSuite]):
+def _print_completion[T](completion: ParsedChatCompletion[T]):
     response = completion.choices[0].message
     rprint(f"[orange]Choice 1/{len(completion.choices)}[/orange]:")
     _print_message(response)
     if response.parsed is not None:
-        _print_parsed_completion(response.parsed)
+        if type(response.parsed) is OptimizationSuite:
+            _print_parsed_completion(response.parsed)
+        else:
+            print("[red]unknown structured format[/red]")
     if response.tool_calls:
         rprint("[blue]Tool calls:[/blue]")
         for call in response.tool_calls:
