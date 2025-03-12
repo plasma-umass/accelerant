@@ -4,21 +4,18 @@ use std::io::{self, BufRead, BufReader};
 use std::path::Path;
 use std::process::Command;
 
-use pyo3::pyclass;
-
-#[pyclass]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct LineLoc {
-    pub path: String,
-    pub line: u64,
-}
+use crate::LineLoc;
 
 pub fn run_perf_script(data_path: &Path) -> io::Result<Vec<u8>> {
     let output = Command::new("perf")
         .args(&["script", "-F+srcline", "--full-source-path", "-i"])
         .arg(data_path)
         .output()?;
-    Ok(output.stdout)
+    if output.status.success() {
+        Ok(output.stdout)
+    } else {
+        Err(io::Error::other(String::from_utf8_lossy(&output.stderr)))
+    }
 }
 
 pub fn parse_and_attribute<R: io::Read>(r: R, project_root: &Path) -> io::Result<AttributedData> {
@@ -56,13 +53,13 @@ fn extract_srcline_from_perf_entry(
     loop {
         // ip/sym
         if lines.next().ok_or(ExtractError::Done)?.trim().is_empty() {
-            break;
+            return Err(ExtractError::Invalid);
         }
         // srcline
         let srcline_raw = lines.next().ok_or(ExtractError::Done)?;
         let srcline = srcline_raw.trim();
         if srcline.is_empty() {
-            break;
+            return Err(ExtractError::Invalid);
         }
         let (loc, _) = srcline.split_once(" ").ok_or(ExtractError::Invalid)?;
         if !loc.contains(':') {
@@ -77,10 +74,9 @@ fn extract_srcline_from_perf_entry(
             });
         }
     }
-
-    return Err(ExtractError::Done);
 }
 
+#[derive(Debug)]
 pub struct AttributedData {
     hit_count: HashMap<LineLoc, u64>,
 }

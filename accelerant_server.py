@@ -42,7 +42,8 @@ def optimize(
         perf_data = PerfData(perf_data_path, project)
     if filename is None or lineno is None:
         assert perf_data is not None
-        abspath, lineno = perf_data.normalize_and_sort()[0][0]
+        hotspot_loc = perf_data.normalize_and_sort()[0][0]
+        abspath, lineno = hotspot_loc.path, hotspot_loc.line
         filename = os.path.relpath(abspath, project._root)
     with project.lsp().start_server():
         return run_chat(project, filename, lineno, model_id)
