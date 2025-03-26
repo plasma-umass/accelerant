@@ -2,6 +2,7 @@ __pycache__/
 .env
 .venv/
 target/
+.python-version
 
 # Ignore example repos, but specifically includes the README, cloning file, and the analysis notebook 
 examples/*
