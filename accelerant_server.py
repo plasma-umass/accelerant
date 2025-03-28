@@ -1,9 +1,9 @@
-import os
 from pathlib import Path
 from typing import Optional
 from flask import Flask, request
+from perfparser import LineLoc
 
-from accelerant.chat import optimize_lines
+from accelerant.chat import optimize_locations
 from accelerant.perf import PerfData
 from accelerant.project import Project
 
@@ -44,13 +44,13 @@ def optimize(
     if filename is None or lineno is None:
         assert perf_data is not None
         lines = []
-        perf_tabulated = perf_data.normalize_and_sort()
-        for hotspot_loc, _ in perf_tabulated[:5]:
-            abspath, lineno = hotspot_loc.path, hotspot_loc.line
-            filename = os.path.relpath(abspath, project._root)
-            lines.append((filename, lineno))
+        perf_tabulated = perf_data.tabulate()
+        num_hotspots_to_keep = 5
+        for hotspot_loc, _ in perf_tabulated[:num_hotspots_to_keep]:
+            filename, lineno = hotspot_loc.path, hotspot_loc.line
+            lines.append(LineLoc(filename, lineno))
     else:
-        lines = [(filename, lineno)]
+        lines = [LineLoc(filename, lineno)]
     with project.lsp().start_server():
         print("Starting chat")
-        return optimize_lines(project, lines, model_id)
+        return optimize_locations(project, lines, perf_data, model_id)

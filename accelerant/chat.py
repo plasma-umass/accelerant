@@ -13,6 +13,7 @@ from openai.types.chat import (
 from pydantic import BaseModel
 from rich import print as rprint
 
+from accelerant.perf import PerfData
 from accelerant.project import Project
 from accelerant.tools import (
     GetInfoTool,
@@ -20,6 +21,7 @@ from accelerant.tools import (
     GetSurroundingCodeTool,
     LLMToolRunner,
 )
+from perfparser import LineLoc
 
 
 class RegionAnalysis(BaseModel):
@@ -44,8 +46,8 @@ class OptimizationSuite(BaseModel):
     suggestions: List[OptimizationSuggestion]
 
 
-def optimize_lines(
-    project: Project, lines: List[tuple[str, int]], model_id: str
+def optimize_locations(
+    project: Project, locs: List[LineLoc], perf_data: Optional[PerfData], model_id: str
 ) -> str:
     lang = project.lang()
 
@@ -67,14 +69,17 @@ def optimize_lines(
     )
 
     analysis_req_msg = "I've identified the following lines as performance hotspots. Please explore the code and try to understand what is happening and why it is slow. Do NOT give suggestions at this point; just reason about what's happening. BRIEFLY explain anything that could lead to poor performance.\n\n"
-    for index, (filename, lineno) in enumerate(lines):
+    for index, loc in enumerate(locs):
+        filename, lineno = loc.path, loc.line
+        pct_time = perf_data.lookup_pct_time(loc) if perf_data is not None else None
+        pct_time_s = (
+            f" ({pct_time:.0%} of all program time)" if pct_time is not None else ""
+        )
         prettyline = number_group_of_lines(
             project.get_lines(filename, lineno - 1 - 5, lineno - 1 + 5),
             max(lineno - 5, 1),
         )
-        analysis_req_msg += (
-            f"# {index + 1}. {filename}:{lineno}\n\n```{lang}\n{prettyline}\n```\n\n"
-        )
+        analysis_req_msg += f"# {index + 1}. {filename}:{lineno}{pct_time_s}\n\n```{lang}\n{prettyline}\n```\n\n"
 
     messages: List[ChatCompletionMessageParam] = [
         _make_system_message(
@@ -91,13 +96,19 @@ def optimize_lines(
     sugg_req_msg = "I've identified the following lines as performance hotspots. Please help me optimize them.\n\n"
     for index, region in enumerate(analysis.regions):
         filename, lineno = region.filename, region.line
+        pct_time = (
+            perf_data.lookup_pct_time(LineLoc(filename, lineno))
+            if perf_data is not None
+            else None
+        )
+        pct_time_s = (
+            f" ({pct_time:.0%} of all program time)" if pct_time is not None else ""
+        )
         prettyline = number_group_of_lines(
             project.get_lines(filename, lineno - 1 - 5, lineno - 1 + 5),
             max(lineno - 5, 1),
         )
-        sugg_req_msg += (
-            f"# {index + 1}. {filename}:{lineno}\n\n```{lang}\n{prettyline}\n```\n\n"
-        )
+        sugg_req_msg += f"# {index + 1}. {filename}:{lineno}{pct_time_s}\n\n```{lang}\n{prettyline}\n```\n\n{region.performanceAnalysis}\n\n"
 
     messages = [
         _make_system_message(
