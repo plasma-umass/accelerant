@@ -8,7 +8,7 @@ use crate::LineLoc;
 
 pub fn run_perf_script(data_path: &Path) -> io::Result<Vec<u8>> {
     let output = Command::new("perf")
-        .args(&["script", "-F+srcline", "--full-source-path", "-i"])
+        .args(&["script", "-Fip,srcline", "--full-source-path", "-i"])
         .arg(data_path)
         .output()?;
     if output.status.success() {
@@ -42,14 +42,11 @@ enum ExtractError {
 /// and returns the first "good" line location from the stack trace,
 /// based on the provided callback.
 ///
-/// Meant to be run on output from `perf script -F+srcline --full-source-path`.
+/// Meant to be run on output from `perf script -Fip,srcline --full-source-path`.
 fn extract_srcline_from_perf_entry(
     mut lines: impl Iterator<Item = String>,
     is_srcline_good: impl Fn(&Path) -> bool,
 ) -> Result<LineLoc, ExtractError> {
-    // skip header
-    lines.next().ok_or(ExtractError::Done)?;
-
     loop {
         // ip/sym
         if lines.next().ok_or(ExtractError::Done)?.trim().is_empty() {
@@ -61,7 +58,7 @@ fn extract_srcline_from_perf_entry(
         if srcline.is_empty() {
             return Err(ExtractError::Invalid);
         }
-        let (loc, _) = srcline.split_once(" ").ok_or(ExtractError::Invalid)?;
+        let (loc, _) = srcline.split_once(" ").unwrap_or((srcline, ""));
         if !loc.contains(':') {
             return Err(ExtractError::Invalid);
         }
@@ -83,16 +80,6 @@ pub struct AttributedData {
 
 impl AttributedData {
     pub fn tabulate(&self) -> Vec<(LineLoc, f64)> {
-        /*
-         tot_samples = sum(self.counts.values())
-        counts_srt = list(
-            map(
-                lambda kv: (kv[0], kv[1] / tot_samples),
-                sorted(self.counts.items(), key=lambda kv: kv[1], reverse=True),
-            )
-        )
-        return counts_srt
-         */
         let tot_samples = self.hit_count.values().sum::<u64>() as f64;
         let mut sorted: Vec<_> = self
             .hit_count

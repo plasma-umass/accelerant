@@ -13,6 +13,18 @@ pub struct LineLoc {
     pub line: u64,
 }
 
+#[pymethods]
+impl LineLoc {
+    #[new]
+    fn new(path: String, line: u64) -> Self {
+        Self { path, line }
+    }
+
+    fn __repr__(&self) -> String {
+        format!("LineLoc({}, {})", &self.path, self.line)
+    }
+}
+
 /// Formats the sum of two numbers as string.
 #[pyfunction]
 fn get_perf_data(data_path_str: &str, project_root_str: &str) -> PyResult<Vec<(LineLoc, f64)>> {
