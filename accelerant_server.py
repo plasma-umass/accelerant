@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Optional
 from flask import Flask, request
 
-from accelerant.chat import optimize_line
+from accelerant.chat import optimize_lines
 from accelerant.perf import PerfData
 from accelerant.project import Project
 
@@ -39,11 +39,18 @@ def optimize(
     project = Project(project_root, "rust")
     perf_data = None
     if perf_data_path:
+        print("Loading perf data")
         perf_data = PerfData(perf_data_path, project)
     if filename is None or lineno is None:
         assert perf_data is not None
-        hotspot_loc = perf_data.normalize_and_sort()[0][0]
-        abspath, lineno = hotspot_loc.path, hotspot_loc.line
-        filename = os.path.relpath(abspath, project._root)
+        lines = []
+        perf_tabulated = perf_data.normalize_and_sort()
+        for hotspot_loc, _ in perf_tabulated[:5]:
+            abspath, lineno = hotspot_loc.path, hotspot_loc.line
+            filename = os.path.relpath(abspath, project._root)
+            lines.append((filename, lineno))
+    else:
+        lines = [(filename, lineno)]
     with project.lsp().start_server():
-        return optimize_line(project, filename, lineno, model_id)
+        print("Starting chat")
+        return optimize_lines(project, lines, model_id)
