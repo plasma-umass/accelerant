@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 import openai
 from openai.types.chat import ChatCompletionToolParam
 
-from accelerant.lsp import request_definition_full, syncexec, extract_relative_path
+from accelerant.lsp import request_definition_full, syncexec, uri_to_relpath
 from accelerant.util import find_symbol, truncate_for_llm
 from accelerant.project import Project
 
@@ -109,7 +109,7 @@ def convert_lsp_loc(r: dict, p: Project) -> dict:
     if "relativePath" in r:
         filename = r["relativePath"]
     else:
-        filename = extract_relative_path(r["targetUri"], p)
+        filename = uri_to_relpath(r["targetUri"], str(p._root))
     if "targetRange" in r:
         range = r["targetRange"]
     else:

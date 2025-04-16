@@ -10,9 +10,17 @@ from openai.types.chat import (
     ChatCompletionSystemMessageParam,
     ParsedChatCompletion,
 )
-from pydantic import BaseModel
 from rich import print as rprint
 
+from accelerant.chat_interface import (
+    ProjectAnalysis,
+    OptimizationSuite,
+)
+from accelerant.lsp import (
+    request_document_diagnostics,
+    syncexec,
+)
+from accelerant.patch import apply_simultaneous_suggestions
 from accelerant.perf import PerfData
 from accelerant.project import Project
 from accelerant.tools import (
@@ -22,28 +30,6 @@ from accelerant.tools import (
     LLMToolRunner,
 )
 from perfparser import LineLoc
-
-
-class RegionAnalysis(BaseModel):
-    filename: str
-    line: int
-    performanceAnalysis: str
-
-
-class ProjectAnalysis(BaseModel):
-    regions: List[RegionAnalysis]
-
-
-class OptimizationSuggestion(BaseModel):
-    filename: str
-    startLine: int
-    endLine: int
-    newCode: str
-
-
-class OptimizationSuite(BaseModel):
-    highLevelSummary: str
-    suggestions: List[OptimizationSuggestion]
 
 
 def optimize_locations(
@@ -117,8 +103,21 @@ def optimize_locations(
         ),
         {"role": "user", "content": sugg_req_msg},
     ]
-    sugg_str, _ = run_chat(
+    sugg_str, opt_suite = run_chat(
         messages, client, model_id, tool_runner, response_format=OptimizationSuite
+    )
+    assert opt_suite
+    apply_simultaneous_suggestions(opt_suite.suggestions, project)
+    # TODO: collect diagnostics from all files, then feed them back to LLM
+    # FIXME: how to get diagnostics from files that depend on these files
+    # but weren't themselves changed?
+    print(
+        syncexec(
+            project.lsp(),
+            request_document_diagnostics(
+                project.lsp().language_server, opt_suite.suggestions[0].filename
+            ),
+        )
     )
     return sugg_str
 
