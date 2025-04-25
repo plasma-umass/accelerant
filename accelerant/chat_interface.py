@@ -12,7 +12,7 @@ class ProjectAnalysis(BaseModel):
     regions: List[RegionAnalysis]
 
 
-class OptimizationSuggestion(BaseModel):
+class CodeSuggestion(BaseModel):
     filename: str
     startLine: int
     endLine: int
@@ -21,4 +21,8 @@ class OptimizationSuggestion(BaseModel):
 
 class OptimizationSuite(BaseModel):
     highLevelSummary: str
-    suggestions: List[OptimizationSuggestion]
+    suggestions: List[CodeSuggestion]
+
+
+class ErrorFixingSuggestions(BaseModel):
+    suggestions: List[CodeSuggestion]

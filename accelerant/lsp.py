@@ -4,6 +4,7 @@ from pathlib import Path, PurePath
 from typing import Any, Coroutine
 from multilspy import LanguageServer, SyncLanguageServer
 from multilspy.multilspy_utils import PathUtils
+from multilspy.lsp_protocol_handler.lsp_types import RelatedFullDocumentDiagnosticReport
 
 
 async def request_definition_full(
@@ -23,13 +24,26 @@ async def request_definition_full(
         return response
 
 
-async def request_document_diagnostics(lsp: LanguageServer, relpath: str):
+async def request_document_diagnostics(
+    lsp: LanguageServer, relpath: str
+) -> RelatedFullDocumentDiagnosticReport:
     with lsp.open_file(relpath):
         uri = relpath_to_uri(relpath, lsp.repository_root_path)
         lsp.server.notify.did_save_text_document({"textDocument": {"uri": uri}})
-        return await lsp.server.send.text_document_diagnostic(
+        response = await lsp.server.send.text_document_diagnostic(
             {"textDocument": {"uri": uri}}
         )
+        assert response["kind"] == "full"
+        return response
+
+
+def sync_request_document_diagnostics(
+    lsp: SyncLanguageServer, relpath: str
+) -> RelatedFullDocumentDiagnosticReport:
+    return syncexec(
+        lsp,
+        request_document_diagnostics(lsp.language_server, relpath),
+    )
 
 
 def relpath_to_uri(relpath: str, root: str) -> str:

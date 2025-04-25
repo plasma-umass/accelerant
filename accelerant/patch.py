@@ -1,12 +1,12 @@
 from pathlib import PurePath
 from typing import List
 
-from accelerant.chat_interface import OptimizationSuggestion
+from accelerant.chat_interface import CodeSuggestion
 from accelerant.project import Project
 
 
 def apply_simultaneous_suggestions(
-    suggestions: List[OptimizationSuggestion],
+    suggestions: List[CodeSuggestion],
     project: Project,
 ):
     """
@@ -14,7 +14,7 @@ def apply_simultaneous_suggestions(
     In other words, they don't account for changes in line numbers caused by
     other suggestions.
     """
-    by_file: dict[str, List[OptimizationSuggestion]] = {}
+    by_file: dict[str, List[CodeSuggestion]] = {}
     for sugg in suggestions:
         if sugg.filename not in by_file:
             by_file[sugg.filename] = []

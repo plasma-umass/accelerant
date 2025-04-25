@@ -13,13 +13,13 @@ from openai.types.chat import (
 from rich import print as rprint
 
 from accelerant.chat_interface import (
+    CodeSuggestion,
+    ErrorFixingSuggestions,
     ProjectAnalysis,
     OptimizationSuite,
 )
-from accelerant.lsp import (
-    request_document_diagnostics,
-    syncexec,
-)
+from accelerant.diag import Diagnostic
+from accelerant.lsp import sync_request_document_diagnostics
 from accelerant.patch import apply_simultaneous_suggestions
 from accelerant.perf import PerfData
 from accelerant.project import Project
@@ -107,19 +107,66 @@ def optimize_locations(
         messages, client, model_id, tool_runner, response_format=OptimizationSuite
     )
     assert opt_suite
-    apply_simultaneous_suggestions(opt_suite.suggestions, project)
-    # TODO: collect diagnostics from all files, then feed them back to LLM
-    # FIXME: how to get diagnostics from files that depend on these files
-    # but weren't themselves changed?
-    print(
-        syncexec(
-            project.lsp(),
-            request_document_diagnostics(
-                project.lsp().language_server, opt_suite.suggestions[0].filename
-            ),
-        )
+
+    apply_suggestions_until_error_fixpoint(
+        opt_suite.suggestions, client, model_id, project, tool_runner
     )
+
     return sugg_str
+
+
+def apply_suggestions_until_error_fixpoint(
+    suggs: List[CodeSuggestion],
+    client: openai.OpenAI,
+    model_id: str,
+    project: Project,
+    tool_runner: LLMToolRunner,
+    max_rounds=2,
+):
+    round_idx = 0
+    # Use <= since we still want to check the LLM suggestions,
+    # even if we won't end up going back to the LLM if they're wrong.
+    while round_idx <= max_rounds:
+        apply_simultaneous_suggestions(suggs, project)
+        # TODO: collect diagnostics from all files, then feed them back to LLM
+        # FIXME: how to get diagnostics from files that depend on these files
+        # but weren't themselves changed?
+        changed_files = set(map(lambda s: s.filename, suggs))
+        diags = (
+            Diagnostic.from_lsp(diag, fname)
+            for fname in changed_files
+            for diag in sync_request_document_diagnostics(project.lsp(), fname)["items"]
+        )
+        errors = list(set(filter(lambda d: d.is_error, diags)))
+        rprint("Errors:", errors)
+        if not errors:
+            return True
+        if round_idx == max_rounds:
+            # Still errors, but we've reached the round limit
+            return False
+
+        fix_req_msg = "My program has the following errors. Please fix them for me.\n\n"
+        for error in errors:
+            fix_req_msg += f"- In {error.filename}:{error.start_line}-{error.end_line}: {error.message}\n"
+
+        messages: List[ChatCompletionMessageParam] = [
+            _make_system_message(
+                model_id,
+                f"You are a {project.lang()} error-fixing assistant. You NEVER make assumptions or express hypotheticals about what the user's program does. Instead, you make ample use of the tool calls available to you to thoroughly explore the user's program. You always give CONCRETE code suggestions.",
+            ),
+            {"role": "user", "content": fix_req_msg},
+        ]
+        _, fix_suite = run_chat(
+            messages,
+            client,
+            model_id,
+            tool_runner,
+            response_format=ErrorFixingSuggestions,
+        )
+        assert fix_suite
+        suggs = fix_suite.suggestions
+
+    return False
 
 
 def run_chat[RespFormat](
@@ -208,12 +255,24 @@ def _print_optimization_suite(parsed: OptimizationSuite):
     rprint()
 
     for sugg in parsed.suggestions:
-        rprint(
-            f"[underline]In {rescape(sugg.filename)}, replace lines {sugg.startLine} to {sugg.endLine}:[/underline]"
-        )
-        rprint()
-        rprint(rescape(sugg.newCode))
-        rprint("------\n")
+        _print_code_suggestions(sugg)
+
+
+def _print_error_fixing_suggestions(parsed: ErrorFixingSuggestions):
+    rprint("[underline]Error-Fixing Suggestions[/underline]")
+    rprint()
+
+    for sugg in parsed.suggestions:
+        _print_code_suggestions(sugg)
+
+
+def _print_code_suggestions(sugg: CodeSuggestion):
+    rprint(
+        f"[underline]In {rescape(sugg.filename)}, replace lines {sugg.startLine} to {sugg.endLine}:[/underline]"
+    )
+    rprint()
+    rprint(rescape(sugg.newCode))
+    rprint("------\n")
 
 
 def _print_completion[T](completion: ParsedChatCompletion[T]):
@@ -225,8 +284,10 @@ def _print_completion[T](completion: ParsedChatCompletion[T]):
             _print_project_analysis(response.parsed)
         elif type(response.parsed) is OptimizationSuite:
             _print_optimization_suite(response.parsed)
+        elif type(response.parsed) is ErrorFixingSuggestions:
+            _print_error_fixing_suggestions(response.parsed)
         else:
-            print("[red]unknown structured format[/red]")
+            rprint("[red]unknown structured format[/red]")
     if response.tool_calls:
         rprint("[blue]Tool calls:[/blue]")
         for call in response.tool_calls:
