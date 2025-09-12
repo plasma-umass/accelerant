@@ -40,6 +40,15 @@ class Diagnostic:
     def __hash__(self):
         return hash(self.__members())
 
+    def __repr__(self) -> str:
+        return (
+            f"Diagnostic(is_error={self.is_error}, "
+            f"filename={self.filename!r}, "
+            f"start_line={self.start_line}, "
+            f"end_line={self.end_line}, "
+            f"message={self.message!r})"
+        )
+
     def __members(self):
         return (
             self.is_error,
