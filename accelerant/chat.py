@@ -19,7 +19,6 @@ from accelerant.chat_interface import (
     OptimizationSuite,
 )
 from accelerant.diag import Diagnostic
-from accelerant.lsp import sync_request_document_diagnostics
 from accelerant.patch import apply_simultaneous_suggestions
 from accelerant.perf import PerfData
 from accelerant.project import Project
@@ -157,7 +156,9 @@ def apply_suggestions_until_error_fixpoint(
         diags = (
             Diagnostic.from_lsp(diag, fname)
             for fname in changed_files
-            for diag in sync_request_document_diagnostics(project.lsp(), fname)["items"]
+            for diag in project.lsp().syncexec(
+                project.lsp().request_document_diagnostics(fname)
+            )["items"]
         )
         errors = list(set(filter(lambda d: d.is_error, diags)))
         rprint("Errors:", errors)

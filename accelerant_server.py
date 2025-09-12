@@ -51,6 +51,8 @@ def optimize(
             lines.append(LineLoc(filename, lineno))
     else:
         lines = [LineLoc(filename, lineno)]
+
+    print("Starting LSP server")
     with project.lsp().start_server():
         print("Starting chat")
         return optimize_locations(project, lines, perf_data, model_id)

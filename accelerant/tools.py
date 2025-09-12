@@ -5,12 +5,7 @@ from pydantic import BaseModel, Field
 import openai
 from openai.types.chat import ChatCompletionToolParam
 
-from accelerant.lsp import (
-    request_definition_full,
-    request_nearest_parent_symbol,
-    syncexec,
-    uri_to_relpath,
-)
+from accelerant.lsp import uri_to_relpath
 from accelerant.util import find_symbol, truncate_for_llm
 from accelerant.project import Project
 
@@ -49,11 +44,8 @@ class GetInfoTool(LLMTool):
             }
         line, column = result["line_idx"], result["end_chr"]
 
-        resp = syncexec(
-            project.lsp(),
-            request_definition_full(
-                project.lsp().language_server, r.filename, line, column
-            ),
+        resp = project.lsp().syncexec(
+            project.lsp().request_definition_full(r.filename, line, column),
         )
         return list(
             map(
@@ -92,7 +84,9 @@ class GetReferencesTool(LLMTool):
             }
         line, column = result["line_idx"], result["end_chr"]
 
-        resp = project.lsp().request_references(r.filename, line, column)
+        resp = project.lsp().syncexec(
+            project.lsp().request_references(r.filename, line, column)
+        )
         results = list(
             map(
                 lambda r: add_src_to_loc(convert_lsp_loc(dict(r), project), project),
@@ -149,7 +143,7 @@ def add_info_to_loc(
 
 
 def get_hover(project: Project, filename: str, line: int, column: int):
-    resp = project.lsp().request_hover(filename, line, column)
+    resp = project.lsp().syncexec(project.lsp().request_hover(filename, line, column))
     if resp is None:
         return None
     if type(resp["contents"]) is dict and "kind" in resp["contents"]:
@@ -174,11 +168,8 @@ class GetSurroundingCodeTool(LLMTool):
         r = self.Model.model_validate(req)
         filename = r.filename
         line = int(r.line) - 1
-        parent_sym = syncexec(
-            project.lsp(),
-            request_nearest_parent_symbol(
-                project.lsp().language_server, filename, line
-            ),
+        parent_sym = project.lsp().syncexec(
+            project.lsp().request_nearest_parent_symbol(filename, line),
         )
         # FIXME: avoid crashing
         assert parent_sym is not None
