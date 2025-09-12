@@ -5,7 +5,12 @@ from pydantic import BaseModel, Field
 import openai
 from openai.types.chat import ChatCompletionToolParam
 
-from accelerant.lsp import request_definition_full, syncexec, uri_to_relpath
+from accelerant.lsp import (
+    request_definition_full,
+    request_nearest_parent_symbol,
+    syncexec,
+    uri_to_relpath,
+)
 from accelerant.util import find_symbol, truncate_for_llm
 from accelerant.project import Project
 
@@ -169,9 +174,17 @@ class GetSurroundingCodeTool(LLMTool):
         r = self.Model.model_validate(req)
         filename = r.filename
         line = int(r.line) - 1
-        sline, eline = line - 5, line + 5
-        lines = project.get_lines(filename, sline, eline)
-        return number_group_of_lines(lines, max(sline + 1, 1))
+        parent_sym = syncexec(
+            project.lsp(),
+            request_nearest_parent_symbol(
+                project.lsp().language_server, filename, line
+            ),
+        )
+        # FIXME: avoid crashing
+        assert parent_sym is not None
+        sline = parent_sym["range"]["start"]["line"] + 1
+        lines = project.get_range(filename, parent_sym["range"])
+        return number_group_of_lines(lines, max(sline, 1))
 
 
 class LLMToolRunner:
