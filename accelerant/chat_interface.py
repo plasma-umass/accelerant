@@ -13,9 +13,16 @@ class ProjectAnalysis(BaseModel):
 
 
 class CodeSuggestion(BaseModel):
+    """
+    A suggestion to replace a region of code with new code.
+    The region is identified by filename and regionName (e.g., the name of the enclosing function).
+    """
+
     filename: str
-    startLine: int
-    endLine: int
+    regionName: str
+    """
+    The name of the code region being replaced, e.g., the name of a function or type definition.
+    """
     newCode: str
 
 

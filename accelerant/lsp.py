@@ -191,6 +191,68 @@ def find_nearest_parent_from_symbol_information(
     return best
 
 
+def find_range_by_name_from_document_symbols(
+    symbols: list[lsp_types.DocumentSymbol], name: str
+) -> Optional[lsp_types.Range]:
+    """Find the LSP Range for the symbol with the given name in DocumentSymbol[].
+
+    Recurses through children and, if multiple matches exist, returns the one with
+    the smallest line span.
+    """
+    best: Optional[lsp_types.Range] = None
+    best_span: Optional[int] = None
+
+    def visit(sym: lsp_types.DocumentSymbol) -> None:
+        nonlocal best, best_span
+        if sym["name"] == name:
+            rng = sym["range"]
+            span = max(0, rng["end"]["line"] - rng["start"]["line"])
+            if best is None or span < (best_span or 10**9):
+                best = rng
+                best_span = span
+        children = sym.get("children")
+        if children:
+            for child in children:
+                visit(child)
+
+    for s in symbols:
+        visit(s)
+    return best
+
+
+def find_range_by_name_from_symbol_information(
+    symbols: list[lsp_types.SymbolInformation], name: str
+) -> Optional[lsp_types.Range]:
+    """Find the LSP Range for the symbol with the given name in SymbolInformation[].
+
+    If multiple matches exist, returns the one with the smallest line span.
+    """
+    best: Optional[lsp_types.Range] = None
+    best_span: Optional[int] = None
+    for sym in symbols:
+        if sym["name"] != name:
+            continue
+        rng = sym["location"]["range"]
+        span = max(0, rng["end"]["line"] - rng["start"]["line"])
+        if best is None or span < (best_span or 10**9):
+            best = rng
+            best_span = span
+    return best
+
+
+def find_range_by_name(
+    symbols: list[lsp_types.DocumentSymbol] | list[lsp_types.SymbolInformation],
+    name: str,
+) -> Optional[lsp_types.Range]:
+    """Dispatch to the appropriate name->range helper based on symbol list shape."""
+    if _is_document_symbol_list(symbols):
+        return find_range_by_name_from_document_symbols(symbols, name)
+    elif _is_symbol_information_list(symbols):
+        return find_range_by_name_from_symbol_information(symbols, name)
+    else:
+        return None
+
+
 def _is_document_symbol_list(
     syms: list[lsp_types.DocumentSymbol] | list[lsp_types.SymbolInformation],
 ) -> TypeGuard[list[lsp_types.DocumentSymbol]]:

@@ -53,10 +53,18 @@ def _build_hotspot_prompt(
         pct_time_s = (
             f" ({pct_time:.0%} of all program time)" if pct_time is not None else ""
         )
-        prettyline = number_group_of_lines(
-            project.get_lines(filename, lineno - 1 - 5, lineno - 1 + 5),
-            max(lineno - 5, 1),
+
+        parent_sym = project.lsp().syncexec(
+            project.lsp().request_nearest_parent_symbol(filename, lineno - 1),
         )
+        # FIXME: avoid crashing
+        assert parent_sym is not None
+        sline = parent_sym["range"]["start"]["line"]
+        prettyline = number_group_of_lines(
+            project.get_range(filename, parent_sym["range"]),
+            max(sline + 1, 1),
+        )
+
         msg += (
             f"#{index + 1}. {filename}:{lineno}{pct_time_s}\n\n"
             f"```{lang}\n{prettyline}\n```\n\n"
@@ -291,7 +299,7 @@ def _print_error_fixing_suggestions(parsed: ErrorFixingSuggestions):
 
 def _print_code_suggestions(sugg: CodeSuggestion):
     rprint(
-        f"[underline]In {rescape(sugg.filename)}, replace lines {sugg.startLine} to {sugg.endLine}:[/underline]"
+        f"[underline]In {rescape(sugg.filename)}, replace region `{rescape(sugg.regionName)}`:[/underline]"
     )
     rprint()
     rprint(rescape(sugg.newCode))
