@@ -32,6 +32,41 @@ from accelerant.tools import (
 from perfparser import LineLoc
 
 
+def _build_hotspot_prompt(
+    project: Project,
+    lang: str,
+    items: list[tuple[str, int, Optional[str]]],
+    perf_data: Optional[PerfData],
+    intro: str,
+) -> str:
+    """Construct a hotspot prompt with optional per-item extra text.
+
+    items: list of (filename, line, extra_text)
+    extra_text is appended after the code block when present.
+    """
+    msg = intro + "\n\n"
+    for index, (filename, lineno, extra_text) in enumerate(items):
+        pct_time = (
+            perf_data.lookup_pct_time(LineLoc(filename, lineno))
+            if perf_data is not None
+            else None
+        )
+        pct_time_s = (
+            f" ({pct_time:.0%} of all program time)" if pct_time is not None else ""
+        )
+        prettyline = number_group_of_lines(
+            project.get_lines(filename, lineno - 1 - 5, lineno - 1 + 5),
+            max(lineno - 5, 1),
+        )
+        msg += (
+            f"#{index + 1}. {filename}:{lineno}{pct_time_s}\n\n"
+            f"```{lang}\n{prettyline}\n```\n\n"
+        )
+        if extra_text:
+            msg += f"{extra_text}\n\n"
+    return msg
+
+
 def optimize_locations(
     project: Project, locs: List[LineLoc], perf_data: Optional[PerfData], model_id: str
 ) -> str:
@@ -54,18 +89,13 @@ def optimize_locations(
         ],
     )
 
-    analysis_req_msg = "I've identified the following lines as performance hotspots. Please explore the code and try to understand what is happening and why it is slow. Do NOT give suggestions at this point; just reason about what's happening. BRIEFLY explain anything that could lead to poor performance.\n\n"
-    for index, loc in enumerate(locs):
-        filename, lineno = loc.path, loc.line
-        pct_time = perf_data.lookup_pct_time(loc) if perf_data is not None else None
-        pct_time_s = (
-            f" ({pct_time:.0%} of all program time)" if pct_time is not None else ""
-        )
-        prettyline = number_group_of_lines(
-            project.get_lines(filename, lineno - 1 - 5, lineno - 1 + 5),
-            max(lineno - 5, 1),
-        )
-        analysis_req_msg += f"# {index + 1}. {filename}:{lineno}{pct_time_s}\n\n```{lang}\n{prettyline}\n```\n\n"
+    analysis_intro = "I've identified the following lines as performance hotspots. Please explore the code and try to understand what is happening and why it is slow. Do NOT give suggestions at this point; just reason about what's happening. BRIEFLY explain anything that could lead to poor performance."
+    analysis_items: list[tuple[str, int, Optional[str]]] = [
+        (loc.path, loc.line, None) for loc in locs
+    ]
+    analysis_req_msg = _build_hotspot_prompt(
+        project, lang, analysis_items, perf_data, analysis_intro
+    )
 
     messages: List[ChatCompletionMessageParam] = [
         _make_system_message(
@@ -79,22 +109,14 @@ def optimize_locations(
     )
     assert analysis is not None
 
-    sugg_req_msg = "I've identified the following lines as performance hotspots. Please help me optimize them.\n\n"
-    for index, region in enumerate(analysis.regions):
-        filename, lineno = region.filename, region.line
-        pct_time = (
-            perf_data.lookup_pct_time(LineLoc(filename, lineno))
-            if perf_data is not None
-            else None
-        )
-        pct_time_s = (
-            f" ({pct_time:.0%} of all program time)" if pct_time is not None else ""
-        )
-        prettyline = number_group_of_lines(
-            project.get_lines(filename, lineno - 1 - 5, lineno - 1 + 5),
-            max(lineno - 5, 1),
-        )
-        sugg_req_msg += f"# {index + 1}. {filename}:{lineno}{pct_time_s}\n\n```{lang}\n{prettyline}\n```\n\n{region.performanceAnalysis}\n\n"
+    sugg_intro = "I've identified the following lines as performance hotspots. Please help me optimize them."
+    sugg_items: list[tuple[str, int, Optional[str]]] = [
+        (region.filename, region.line, region.performanceAnalysis)
+        for region in analysis.regions
+    ]
+    sugg_req_msg = _build_hotspot_prompt(
+        project, lang, sugg_items, perf_data, sugg_intro
+    )
 
     messages = [
         _make_system_message(
