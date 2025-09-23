@@ -24,40 +24,55 @@ def apply_simultaneous_suggestions(
         by_file[sugg_.filename].append(sugg_)
 
     for relpath, suggs_raw in by_file.items():
+        abspath = PurePath(project._root, relpath)
+        with open(abspath, "r") as f:
+            old_text = f.read()
+            old_lines = old_text.splitlines(keepends=False)
+
+        line_starts = [0]
+        for line in old_lines:
+            last = line_starts[-1]
+            line_starts.append(last + len(line))
+        print("*", line_starts)
+
         # FIXME: handle conflicting suggestions (i.e. that overlap)
         symbols = project.lsp().syncexec(
             project.lsp().request_document_symbols(relpath)
         )
-        suggs = list(
-            map(lambda s: get_symbol_range_for_suggestion(symbols, s), suggs_raw)
+        rng_to_offset = lambda loc: (  # noqa: E731
+            line_starts[loc["start"]["line"]] + loc["start"]["character"],
+            line_starts[loc["end"]["line"]] + loc["end"]["character"],
         )
-        suggs = list(sorted(suggs, key=lambda s: s[0]["start"]["line"]))
-        abspath = PurePath(project._root, relpath)
-        with open(abspath, "r") as f:
-            old_lines = enumerate(f.readlines())
-
+        suggs = list(
+            map(
+                lambda tup: (rng_to_offset(tup[0]), tup[1]),
+                map(
+                    lambda s: (get_symbol_range_for_suggestion(symbols, s), s.newCode),
+                    suggs_raw,
+                ),
+            )
+        )
+        suggs = list(sorted(suggs, key=lambda tup: tup[0][1], reverse=True))
         print(abspath, suggs)
+
+        new_text = []
+        cur_end = len(old_text)
+        while suggs:
+            sugg = suggs[0]
+            suggs = suggs[1:]
+            new_text.append(old_text[sugg[0][1] : cur_end])
+            new_text.append(sugg[1])
+            cur_end = sugg[0][0]
+        new_text.append(old_text[0:cur_end])
+
         with open(abspath, "w") as f:
-            skip_until_after = 0
-            for old_num, old_line in old_lines:
-                if old_num <= skip_until_after:
-                    continue
-                if suggs and suggs[0][0]["start"]["line"] == old_num:
-                    print("apply")
-                    sugg = suggs[0]
-                    suggs = suggs[1:]
-                    f.write(sugg[1])
-                    if not sugg[1].endswith("\n"):
-                        f.write("\n")
-                    skip_until_after = sugg[0]["end"]["line"]
-                else:
-                    f.write(old_line)
+            f.write("".join(reversed(new_text)))
 
 
 def get_symbol_range_for_suggestion(
     symbols: Union[list[lsp_types.DocumentSymbol], list[lsp_types.SymbolInformation]],
     s: CodeSuggestion,
-) -> tuple[lsp_types.Range, str]:
+) -> lsp_types.Range:
     rng = find_range_by_name(symbols, s.regionName)
-    assert rng is not None
-    return (rng, s.newCode)
+    assert rng is not None, f"Could not find symbol {s.regionName}"
+    return rng

@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 import openai
 from openai.types.chat import ChatCompletionToolParam
 
-from accelerant.lsp import uri_to_relpath
+from accelerant.lsp import TOP_LEVEL_SYMBOL_KINDS, uri_to_relpath
 from accelerant.util import find_symbol, truncate_for_llm
 from accelerant.project import Project
 
@@ -169,7 +169,9 @@ class GetSurroundingCodeTool(LLMTool):
         filename = r.filename
         line = int(r.line) - 1
         parent_sym = project.lsp().syncexec(
-            project.lsp().request_nearest_parent_symbol(filename, line),
+            project.lsp().request_nearest_parent_symbol(
+                filename, line, TOP_LEVEL_SYMBOL_KINDS
+            ),
         )
         # FIXME: avoid crashing
         assert parent_sym is not None

@@ -2,7 +2,7 @@ import asyncio
 from contextlib import contextmanager
 import os
 from pathlib import Path, PurePath
-from typing import Any, Coroutine, Optional, TypeGuard, TypedDict, Iterator
+from typing import Any, Coroutine, Optional, TypeGuard, TypedDict, Iterator, Iterable
 
 from multilspy import SyncLanguageServer
 from multilspy.multilspy_config import MultilspyConfig
@@ -12,6 +12,19 @@ from multilspy.lsp_protocol_handler import lsp_types
 from multilspy.lsp_protocol_handler.lsp_types import RelatedFullDocumentDiagnosticReport
 from multilspy.lsp_protocol_handler.server import LanguageServerHandler
 from multilspy import multilspy_types
+
+TOP_LEVEL_SYMBOL_KINDS = {
+    lsp_types.SymbolKind.Class,
+    lsp_types.SymbolKind.Struct,
+    lsp_types.SymbolKind.Enum,
+    lsp_types.SymbolKind.EnumMember,
+    lsp_types.SymbolKind.Interface,
+    lsp_types.SymbolKind.Module,
+    lsp_types.SymbolKind.Namespace,
+    lsp_types.SymbolKind.Function,
+    lsp_types.SymbolKind.Method,
+    lsp_types.SymbolKind.Constructor,
+}
 
 
 class LSP:
@@ -85,20 +98,49 @@ class LSP:
             return resp or []
 
     async def request_nearest_parent_symbol(
-        self, relpath: str, line_zero_based: int
+        self,
+        relpath: str,
+        line_zero_based: int,
+        allowed_kinds: Optional[Iterable[lsp_types.SymbolKind]],
     ) -> Optional["LiteSymbol"]:
         """Fetch document symbols and return the nearest parent symbol for a line.
 
-        Returns a normalized TypedDict with the symbol name and its LSP Range.
+        Parameters
+        ----------
+        relpath: str
+            File path relative to the workspace root.
+        line_zero_based: int
+            0-based line number to search for.
+        allowed_kinds: Optional[Iterable[lsp_types.SymbolKind]]
+            Optional iterable of LSP SymbolKind values. If provided, only
+            symbols whose ``kind`` is in this collection are considered as candidates.
+            Traversal still descends through non-matching kinds to reach deeper
+            matching symbols. When None, all kinds are considered.
+
+        Returns
+        -------
+        Optional[LiteSymbol]
+            A normalized TypedDict with the symbol name and its LSP range for the
+            *smallest* containing (nearest parent) symbol of an allowed kind, or
+            None if no such symbol exists.
         """
         symbols = await self.request_document_symbols(relpath)
+        if allowed_kinds is not None:
+            allowed_set: Optional[set[lsp_types.SymbolKind]] = set(allowed_kinds)
+        else:
+            allowed_set = None
+
         if _is_document_symbol_list(symbols):
-            ds = find_nearest_parent_from_document_symbols(symbols, line_zero_based)
+            ds = find_nearest_parent_from_document_symbols(
+                symbols, line_zero_based, allowed_set
+            )
             if ds is None:
                 return None
             return {"name": ds["name"], "range": ds["range"]}
         elif _is_symbol_information_list(symbols):
-            si = find_nearest_parent_from_symbol_information(symbols, line_zero_based)
+            si = find_nearest_parent_from_symbol_information(
+                symbols, line_zero_based, allowed_set
+            )
             if si is None:
                 return None
             return {"name": si["name"], "range": si["location"]["range"]}
@@ -142,11 +184,14 @@ def line_in_lsp_range(line_zero_based: int, r: lsp_types.Range) -> bool:
 
 
 def find_nearest_parent_from_document_symbols(
-    symbols: list[lsp_types.DocumentSymbol], line_zero_based: int
+    symbols: list[lsp_types.DocumentSymbol],
+    line_zero_based: int,
+    allowed_kinds: Optional[set[lsp_types.SymbolKind]] = None,
 ) -> Optional[lsp_types.DocumentSymbol]:
-    """Return the smallest DocumentSymbol whose range contains the given 0-based line.
+    """Return the smallest DocumentSymbol (by line span) whose range contains the line.
 
-    Uses hierarchical children to find the nearest (smallest-span) containing symbol.
+    If ``allowed_kinds`` is provided, only symbols whose ``kind`` is a member are
+    considered as candidates, though traversal continues through all nodes.
     """
     best: Optional[lsp_types.DocumentSymbol] = None
     best_span: Optional[int] = None
@@ -156,12 +201,14 @@ def find_nearest_parent_from_document_symbols(
         rng = sym["range"]
         if not line_in_lsp_range(line_zero_based, rng):
             return
-        start = rng["start"]["line"]
-        end = rng["end"]["line"]
-        span = max(0, end - start)
-        if best is None or span < (best_span or 10**9):
-            best = sym
-            best_span = span
+        # Only compare/update if kind is allowed (or no restriction)
+        if allowed_kinds is None or sym.get("kind") in allowed_kinds:
+            start = rng["start"]["line"]
+            end = rng["end"]["line"]
+            span = max(0, end - start)
+            if best is None or span < (best_span or 10**9):
+                best = sym
+                best_span = span
         children = sym.get("children")
         if children:
             for child in children:
@@ -173,14 +220,21 @@ def find_nearest_parent_from_document_symbols(
 
 
 def find_nearest_parent_from_symbol_information(
-    symbols: list[lsp_types.SymbolInformation], line_zero_based: int
+    symbols: list[lsp_types.SymbolInformation],
+    line_zero_based: int,
+    allowed_kinds: Optional[set[lsp_types.SymbolKind]] = None,
 ) -> Optional[lsp_types.SymbolInformation]:
-    """Return the smallest SymbolInformation whose range contains the given 0-based line."""
+    """Return the smallest SymbolInformation whose range contains the given 0-based line.
+
+    Respects ``allowed_kinds`` similarly to the DocumentSymbol variant.
+    """
     best: Optional[lsp_types.SymbolInformation] = None
     best_span: Optional[int] = None
     for sym in symbols:
         rng = sym["location"]["range"]
         if not line_in_lsp_range(line_zero_based, rng):
+            continue
+        if allowed_kinds is not None and sym.get("kind") not in allowed_kinds:
             continue
         start = rng["start"]["line"]
         end = rng["end"]["line"]

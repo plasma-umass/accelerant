@@ -19,6 +19,7 @@ from accelerant.chat_interface import (
     OptimizationSuite,
 )
 from accelerant.diag import Diagnostic
+from accelerant.lsp import TOP_LEVEL_SYMBOL_KINDS
 from accelerant.patch import apply_simultaneous_suggestions
 from accelerant.perf import PerfData
 from accelerant.project import Project
@@ -55,7 +56,9 @@ def _build_hotspot_prompt(
         )
 
         parent_sym = project.lsp().syncexec(
-            project.lsp().request_nearest_parent_symbol(filename, lineno - 1),
+            project.lsp().request_nearest_parent_symbol(
+                filename, lineno - 1, TOP_LEVEL_SYMBOL_KINDS
+            ),
         )
         # FIXME: avoid crashing
         assert parent_sym is not None
@@ -98,7 +101,7 @@ def optimize_locations(
 
     analysis_intro = "I've identified the following lines as performance hotspots. Please explore the code and try to understand what is happening and why it is slow. Do NOT give suggestions at this point; just reason about what's happening. BRIEFLY explain anything that could lead to poor performance."
     analysis_items: list[tuple[str, int, Optional[str]]] = [
-        (loc.path, loc.line, None) for loc in locs
+        (loc.path, loc.line, None) for loc in locs if loc.line > 0
     ]
     analysis_req_msg = _build_hotspot_prompt(
         project, lang, analysis_items, perf_data, analysis_intro
