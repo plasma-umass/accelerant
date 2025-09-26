@@ -55,4 +55,7 @@ def optimize(
     print("Starting LSP server")
     with project.lsp().start_server():
         print("Starting chat")
-        return optimize_locations(project, lines, perf_data, model_id)
+        with project.fs_sandbox() as fs:
+            results = optimize_locations(project, fs, lines, perf_data, model_id)
+            fs.persist_all()
+            return results

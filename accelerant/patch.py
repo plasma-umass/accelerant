@@ -1,16 +1,18 @@
-from pathlib import PurePath
+from pathlib import Path, PurePath
 from typing import List, Union
 
 from multilspy.lsp_protocol_handler import lsp_types
 
 from accelerant.chat_interface import CodeSuggestion
+from accelerant.fs_sandbox import FsSandbox
 from accelerant.lsp import find_range_by_name
 from accelerant.project import Project
 
 
 def apply_simultaneous_suggestions(
-    suggestions: List[CodeSuggestion],
     project: Project,
+    fs: FsSandbox,
+    suggestions: List[CodeSuggestion],
 ):
     """
     Apply suggestions that were created to be applied simultaneously.
@@ -25,9 +27,8 @@ def apply_simultaneous_suggestions(
 
     for relpath, suggs_raw in by_file.items():
         abspath = PurePath(project._root, relpath)
-        with open(abspath, "r") as f:
-            old_text = f.read()
-            old_lines = old_text.splitlines(keepends=True)
+        old_text = FsSandbox.read_file(fs, Path(abspath))
+        old_lines = old_text.splitlines(keepends=True)
 
         line_starts = [0]
         for line in old_lines:
@@ -67,8 +68,7 @@ def apply_simultaneous_suggestions(
             cur_end = sugg[0][0]
         new_text.append(old_text[0:cur_end])
 
-        with open(abspath, "w") as f:
-            f.write("".join(reversed(new_text)))
+        fs.write_file(Path(abspath), "".join(reversed(new_text)))
 
 
 def get_symbol_range_for_suggestion(

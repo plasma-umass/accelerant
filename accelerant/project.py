@@ -4,6 +4,7 @@ from multilspy.lsp_protocol_handler import lsp_types
 from pathlib import Path
 from typing import List, Optional
 
+from accelerant.fs_sandbox import FsSandbox
 from accelerant.lsp import LSP
 
 
@@ -21,6 +22,9 @@ class Project:
         if self._lsp is None:
             self._lsp = LSP(self._root, self._lang)
         return self._lsp
+
+    def fs_sandbox(self) -> FsSandbox:
+        return FsSandbox(self._root)
 
     def get_line(self, filename: str, line: int) -> str:
         assert line >= 0

@@ -19,6 +19,7 @@ from accelerant.chat_interface import (
     OptimizationSuite,
 )
 from accelerant.diag import Diagnostic
+from accelerant.fs_sandbox import FsSandbox
 from accelerant.lsp import TOP_LEVEL_SYMBOL_KINDS
 from accelerant.patch import apply_simultaneous_suggestions
 from accelerant.perf import PerfData
@@ -79,7 +80,11 @@ def _build_hotspot_prompt(
 
 
 def optimize_locations(
-    project: Project, locs: List[LineLoc], perf_data: Optional[PerfData], model_id: str
+    project: Project,
+    fs: FsSandbox,
+    locs: List[LineLoc],
+    perf_data: Optional[PerfData],
+    model_id: str,
 ) -> str:
     lang = project.lang()
 
@@ -141,7 +146,7 @@ def optimize_locations(
     )
     assert opt_suite
 
-    apply_simultaneous_suggestions(opt_suite.suggestions, project)
+    apply_simultaneous_suggestions(project, fs, opt_suite.suggestions)
     # apply_suggestions_until_error_fixpoint(
     #     opt_suite.suggestions, client, model_id, project, tool_runner
     # )
@@ -154,6 +159,7 @@ def apply_suggestions_until_error_fixpoint(
     client: openai.OpenAI,
     model_id: str,
     project: Project,
+    fs: FsSandbox,
     tool_runner: LLMToolRunner,
     max_rounds=2,
 ):
@@ -161,7 +167,7 @@ def apply_suggestions_until_error_fixpoint(
     # Use <= since we still want to check the LLM suggestions,
     # even if we won't end up going back to the LLM if they're wrong.
     while round_idx <= max_rounds:
-        apply_simultaneous_suggestions(suggs, project)
+        apply_simultaneous_suggestions(project, fs, suggs)
         # TODO: collect diagnostics from all files, then feed them back to LLM
         # FIXME: how to get diagnostics from files that depend on these files
         # but weren't themselves changed?
