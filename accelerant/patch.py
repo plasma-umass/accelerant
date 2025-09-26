@@ -27,7 +27,7 @@ def apply_simultaneous_suggestions(
         abspath = PurePath(project._root, relpath)
         with open(abspath, "r") as f:
             old_text = f.read()
-            old_lines = old_text.splitlines(keepends=False)
+            old_lines = old_text.splitlines(keepends=True)
 
         line_starts = [0]
         for line in old_lines:
@@ -43,6 +43,7 @@ def apply_simultaneous_suggestions(
             line_starts[loc["start"]["line"]] + loc["start"]["character"],
             line_starts[loc["end"]["line"]] + loc["end"]["character"],
         )
+        print("SYM", relpath, symbols)
         suggs = list(
             map(
                 lambda tup: (rng_to_offset(tup[0]), tup[1]),
@@ -60,7 +61,8 @@ def apply_simultaneous_suggestions(
         while suggs:
             sugg = suggs[0]
             suggs = suggs[1:]
-            new_text.append(old_text[sugg[0][1] : cur_end])
+            if sugg[0][1] + 1 < cur_end:
+                new_text.append(old_text[sugg[0][1] + 1 : cur_end])
             new_text.append(sugg[1])
             cur_end = sugg[0][0]
         new_text.append(old_text[0:cur_end])

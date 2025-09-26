@@ -66,10 +66,11 @@ def _build_hotspot_prompt(
         prettyline = number_group_of_lines(
             project.get_range(filename, parent_sym["range"]),
             max(sline + 1, 1),
+            with_note=lambda n: " <--- HOTSPOT" if n == lineno else "",
         )
 
         msg += (
-            f"#{index + 1}. {filename}:{lineno}{pct_time_s}\n\n"
+            f"#{index + 1}. {filename} at region {parent_sym['name']} {pct_time_s}\n\n"
             f"```{lang}\n{prettyline}\n```\n\n"
         )
         if extra_text:
@@ -131,7 +132,7 @@ def optimize_locations(
     messages = [
         _make_system_message(
             model_id,
-            f"You are a {lang} performance optimization assistant. You NEVER make assumptions or express hypotheticals about what the user's program does. Instead, you make ample use of the tool calls available to you to thoroughly explore the user's program. You always give CONCRETE code suggestions.",
+            f"You are a {lang} performance optimization assistant. You NEVER make assumptions or express hypotheticals about what the user's program does. Instead, you make ample use of the tool calls available to you to thoroughly explore the user's program. You always give CONCRETE code suggestions. NEVER delete code comments or gratuitously rename variables.",
         ),
         {"role": "user", "content": sugg_req_msg},
     ]
@@ -140,9 +141,10 @@ def optimize_locations(
     )
     assert opt_suite
 
-    apply_suggestions_until_error_fixpoint(
-        opt_suite.suggestions, client, model_id, project, tool_runner
-    )
+    apply_simultaneous_suggestions(opt_suite.suggestions, project)
+    # apply_suggestions_until_error_fixpoint(
+    #     opt_suite.suggestions, client, model_id, project, tool_runner
+    # )
 
     return sugg_str
 

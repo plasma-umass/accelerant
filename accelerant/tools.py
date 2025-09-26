@@ -131,6 +131,8 @@ def add_src_to_loc(loc: dict, p: Project) -> dict:
             srclines[:1] + ["<...too long>"], loc["startLine"]
         )
     loc["sourceCode"] = source_code or "<too long>"
+    del loc["startLine"]
+    del loc["endLine"]
     return loc
 
 
@@ -177,7 +179,11 @@ class GetSurroundingCodeTool(LLMTool):
         assert parent_sym is not None
         sline = parent_sym["range"]["start"]["line"] + 1
         lines = project.get_range(filename, parent_sym["range"])
-        return number_group_of_lines(lines, max(sline, 1))
+        return {
+            "filename": r.filename,
+            "regionName": parent_sym["name"],
+            "code": number_group_of_lines(lines, max(sline, 1)),
+        }
 
 
 class LLMToolRunner:
