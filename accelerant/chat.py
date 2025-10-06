@@ -1,7 +1,6 @@
 import json
 from rich.markup import escape as rescape
 from typing import Any, List, Optional
-from llm_utils import number_group_of_lines
 import openai
 from openai import NotGiven
 from openai.types.chat import (
@@ -30,6 +29,7 @@ from accelerant.tools import (
     GetSurroundingCodeTool,
     LLMToolRunner,
 )
+from accelerant.util import custom_number_group_of_lines
 from perfparser import LineLoc
 
 
@@ -64,7 +64,7 @@ def _build_hotspot_prompt(
         # FIXME: avoid crashing
         assert parent_sym is not None
         sline = parent_sym["range"]["start"]["line"]
-        prettyline = number_group_of_lines(
+        prettyline = custom_number_group_of_lines(
             project.get_range(filename, parent_sym["range"]),
             max(sline + 1, 1),
             with_note=lambda n: " <--- HOTSPOT" if n == lineno else "",
