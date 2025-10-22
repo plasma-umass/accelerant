@@ -29,7 +29,3 @@ class CodeSuggestion(BaseModel):
 class OptimizationSuite(BaseModel):
     highLevelSummary: str
     suggestions: List[CodeSuggestion]
-
-
-class ErrorFixingSuggestions(BaseModel):
-    suggestions: List[CodeSuggestion]

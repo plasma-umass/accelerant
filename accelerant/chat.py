@@ -1,34 +1,19 @@
-import json
 from rich.markup import escape as rescape
 from typing import Any, List, Optional
-import openai
-from openai import NotGiven
-from openai.types.chat import (
-    ChatCompletionDeveloperMessageParam,
-    ChatCompletionMessageParam,
-    ChatCompletionSystemMessageParam,
-    ParsedChatCompletion,
-)
+from agents import Agent, Runner, Tool, TracingProcessor, set_trace_processors
 from rich import print as rprint
 
 from accelerant.chat_interface import (
     CodeSuggestion,
-    ErrorFixingSuggestions,
     ProjectAnalysis,
     OptimizationSuite,
 )
-from accelerant.diag import Diagnostic
 from accelerant.fs_sandbox import FsSandbox
 from accelerant.lsp import TOP_LEVEL_SYMBOL_KINDS
 from accelerant.patch import apply_simultaneous_suggestions
 from accelerant.perf import PerfData
 from accelerant.project import Project
-from accelerant.tools import (
-    GetInfoTool,
-    GetReferencesTool,
-    GetSurroundingCodeTool,
-    LLMToolRunner,
-)
+from accelerant import tools
 from accelerant.util import custom_number_group_of_lines
 from perfparser import LineLoc
 
@@ -86,25 +71,18 @@ def optimize_locations(
     perf_data: Optional[PerfData],
     model_id: str,
 ) -> str:
+    set_trace_processors([LoggingTracingProcessor()])
+
     lang = project.lang()
 
-    try:
-        client = openai.OpenAI(timeout=90)
-    except openai.OpenAIError:
-        print("you need an OpenAI key to use this tool.")
-        print("You can get a key here: https://platform.openai.com/api-keys.")
-        print("set the environment variable OPENAI_API_KEY to your key value.")
-        raise Exception()
+    agent_context = tools.AgentContext(project=project)
+    agent_tools: list[Tool] = [
+        tools.get_info,
+        tools.get_references,
+        tools.get_surrounding_code,
+    ]
 
-    tool_runner = LLMToolRunner(
-        project,
-        [
-            GetInfoTool(),
-            GetReferencesTool(),
-            GetSurroundingCodeTool(),
-        ],
-    )
-
+    analysis_system_message = f"You are a {lang} performance optimization assistant. You NEVER make assumptions or express hypotheticals about what the user's program does. Instead, you make ample use of the tool calls available to you to thoroughly explore the user's program."
     analysis_intro = "I've identified the following lines as performance hotspots. Please explore the code and try to understand what is happening and why it is slow. Do NOT give suggestions at this point; just reason about what's happening. BRIEFLY explain anything that could lead to poor performance."
     analysis_items: list[tuple[str, int, Optional[str]]] = [
         (loc.path, loc.line, None) for loc in locs if loc.line > 0
@@ -112,19 +90,18 @@ def optimize_locations(
     analysis_req_msg = _build_hotspot_prompt(
         project, lang, analysis_items, perf_data, analysis_intro
     )
-
-    messages: List[ChatCompletionMessageParam] = [
-        _make_system_message(
-            model_id,
-            f"You are a {lang} performance optimization assistant. You NEVER make assumptions or express hypotheticals about what the user's program does. Instead, you make ample use of the tool calls available to you to thoroughly explore the user's program.",
-        ),
-        {"role": "user", "content": analysis_req_msg},
-    ]
-    _, analysis = run_chat(
-        messages, client, model_id, tool_runner, response_format=ProjectAnalysis
+    analysis_agent = Agent(
+        name="Performance Analysis Assistant",
+        instructions=analysis_system_message,
+        output_type=ProjectAnalysis,
+        tools=agent_tools,
     )
+    analysis = Runner.run_sync(
+        analysis_agent, analysis_req_msg, context=agent_context
+    ).final_output
     assert analysis is not None
 
+    sugg_system_message = f"You are a {lang} performance optimization assistant. You NEVER make assumptions or express hypotheticals about what the user's program does. Instead, you make ample use of the tool calls available to you to thoroughly explore the user's program. You always give CONCRETE code suggestions. NEVER delete code comments or gratuitously rename variables."
     sugg_intro = "I've identified the following lines as performance hotspots. Please help me optimize them."
     sugg_items: list[tuple[str, int, Optional[str]]] = [
         (region.filename, region.line, region.performanceAnalysis)
@@ -133,141 +110,49 @@ def optimize_locations(
     sugg_req_msg = _build_hotspot_prompt(
         project, lang, sugg_items, perf_data, sugg_intro
     )
-
-    messages = [
-        _make_system_message(
-            model_id,
-            f"You are a {lang} performance optimization assistant. You NEVER make assumptions or express hypotheticals about what the user's program does. Instead, you make ample use of the tool calls available to you to thoroughly explore the user's program. You always give CONCRETE code suggestions. NEVER delete code comments or gratuitously rename variables.",
-        ),
-        {"role": "user", "content": sugg_req_msg},
-    ]
-    sugg_str, opt_suite = run_chat(
-        messages, client, model_id, tool_runner, response_format=OptimizationSuite
+    sugg_agent = Agent(
+        name="Code Optimization Assistant",
+        instructions=sugg_system_message,
+        output_type=OptimizationSuite,
+        tools=agent_tools,
     )
+    opt_suite = Runner.run_sync(
+        sugg_agent, sugg_req_msg, context=agent_context
+    ).final_output
     assert opt_suite
 
     apply_simultaneous_suggestions(project, fs, opt_suite.suggestions)
-    # apply_suggestions_until_error_fixpoint(
-    #     opt_suite.suggestions, client, model_id, project, tool_runner
-    # )
 
-    return sugg_str
+    return opt_suite.highLevelSummary
 
 
-def apply_suggestions_until_error_fixpoint(
-    suggs: List[CodeSuggestion],
-    client: openai.OpenAI,
-    model_id: str,
-    project: Project,
-    fs: FsSandbox,
-    tool_runner: LLMToolRunner,
-    max_rounds=2,
-):
-    round_idx = 0
-    # Use <= since we still want to check the LLM suggestions,
-    # even if we won't end up going back to the LLM if they're wrong.
-    while round_idx <= max_rounds:
-        apply_simultaneous_suggestions(project, fs, suggs)
-        # TODO: collect diagnostics from all files, then feed them back to LLM
-        # FIXME: how to get diagnostics from files that depend on these files
-        # but weren't themselves changed?
-        changed_files = set(map(lambda s: s.filename, suggs))
-        diags = (
-            Diagnostic.from_lsp(diag, fname)
-            for fname in changed_files
-            for diag in project.lsp().syncexec(
-                project.lsp().request_document_diagnostics(fname)
-            )["items"]
-        )
-        errors = list(set(filter(lambda d: d.is_error, diags)))
-        rprint("Errors:", errors)
-        if not errors:
-            return True
-        if round_idx == max_rounds:
-            # Still errors, but we've reached the round limit
-            return False
+class LoggingTracingProcessor(TracingProcessor):
+    def __init__(self):
+        self.active_traces = {}
+        self.active_spans = {}
 
-        fix_req_msg = "My program has the following errors. Please fix them for me.\n\n"
-        for error in errors:
-            fix_req_msg += f"- In {error.filename}:{error.start_line}-{error.end_line}: {error.message}\n"
+    def on_trace_start(self, trace):
+        rprint(f"[bold green]Starting trace:[/bold green] {trace.name}")
+        self.active_traces[trace.trace_id] = trace
 
-        messages: List[ChatCompletionMessageParam] = [
-            _make_system_message(
-                model_id,
-                f"You are a {project.lang()} error-fixing assistant. You NEVER make assumptions or express hypotheticals about what the user's program does. Instead, you make ample use of the tool calls available to you to thoroughly explore the user's program. You always give CONCRETE code suggestions.",
-            ),
-            {"role": "user", "content": fix_req_msg},
-        ]
-        _, fix_suite = run_chat(
-            messages,
-            client,
-            model_id,
-            tool_runner,
-            response_format=ErrorFixingSuggestions,
-        )
-        assert fix_suite
-        suggs = fix_suite.suggestions
+    def on_trace_end(self, trace):
+        rprint(f"[bold red]Ending trace:[/bold red] {trace.name}")
+        del self.active_traces[trace.trace_id]
 
-    return False
+    def on_span_start(self, span):
+        rprint(f"[blue]Starting span:[/blue] {span.span_data.export()}")
+        self.active_spans[span.span_id] = span
 
+    def on_span_end(self, span):
+        rprint(f"[magenta]Ending span:[/magenta] {span.span_data.export()}")
+        del self.active_spans[span.span_id]
 
-def run_chat[RespFormat](
-    messages: List[ChatCompletionMessageParam],
-    client: openai.OpenAI,
-    model_id: str,
-    tool_runner: LLMToolRunner,
-    response_format: type[RespFormat] | NotGiven,
-) -> tuple[str, Optional[RespFormat]]:
-    for msg in messages:
-        _print_message(msg)
+    def shutdown(self):
+        self.active_traces.clear()
+        self.active_spans.clear()
 
-    response_msg = None
-    MAX_ROUNDS = 30
-    round_num = 0
-    while (response_msg is None or response_msg.tool_calls) and round_num <= MAX_ROUNDS:
-        tool_schemas = tool_runner.all_schemas()
-        response = client.beta.chat.completions.parse(
-            model=model_id,
-            messages=messages,
-            tools=tool_schemas,
-            tool_choice="auto",
-            response_format=response_format,
-        )
-        _print_completion(response)
-        response_msg = response.choices[0].message
-        messages.append(response_msg)  # type: ignore
-        tool_calls = response_msg.tool_calls
-
-        if tool_calls:
-            rprint("[blue]Tool responses:[/blue]")
-            for tool_call in tool_calls:
-                func_name = tool_call.function.name
-                func_args = json.loads(tool_call.function.arguments)
-                func_response = tool_runner.call(func_name, func_args)
-                rprint(f"  {func_name} =>", smart_escape(func_response))
-                messages.append(
-                    {
-                        "tool_call_id": tool_call.id,
-                        "role": "tool",
-                        "content": json.dumps(func_response),
-                    }
-                )
-
-        round_num += 1
-
-    assert response_msg is not None and response_msg.content is not None
-    return response_msg.content, response_msg.parsed
-
-
-def _make_system_message(
-    model_id: str, content: str
-) -> ChatCompletionSystemMessageParam | ChatCompletionDeveloperMessageParam:
-    if model_id.startswith("o"):
-        return {"role": "developer", "content": content}
-    elif model_id.startswith("gpt"):
-        return {"role": "system", "content": content}
-    else:
-        raise Exception(f"unknown model id {model_id}")
+    def force_flush(self):
+        pass
 
 
 def _print_message(msg: Any):
@@ -300,14 +185,6 @@ def _print_optimization_suite(parsed: OptimizationSuite):
         _print_code_suggestions(sugg)
 
 
-def _print_error_fixing_suggestions(parsed: ErrorFixingSuggestions):
-    rprint("[underline]Error-Fixing Suggestions[/underline]")
-    rprint()
-
-    for sugg in parsed.suggestions:
-        _print_code_suggestions(sugg)
-
-
 def _print_code_suggestions(sugg: CodeSuggestion):
     rprint(
         f"[underline]In {rescape(sugg.filename)}, replace region `{rescape(sugg.regionName)}`:[/underline]"
@@ -315,27 +192,6 @@ def _print_code_suggestions(sugg: CodeSuggestion):
     rprint()
     rprint(rescape(sugg.newCode))
     rprint("------\n")
-
-
-def _print_completion[T](completion: ParsedChatCompletion[T]):
-    response = completion.choices[0].message
-    rprint(f"[orange]Choice 1/{len(completion.choices)}[/orange]:")
-    _print_message(response)
-    if response.parsed is not None:
-        if type(response.parsed) is ProjectAnalysis:
-            _print_project_analysis(response.parsed)
-        elif type(response.parsed) is OptimizationSuite:
-            _print_optimization_suite(response.parsed)
-        elif type(response.parsed) is ErrorFixingSuggestions:
-            _print_error_fixing_suggestions(response.parsed)
-        else:
-            rprint("[red]unknown structured format[/red]")
-    if response.tool_calls:
-        rprint("[blue]Tool calls:[/blue]")
-        for call in response.tool_calls:
-            funcname = call.function.name
-            funcargs = call.function.arguments
-            rprint(f"  {rescape(funcname)} =>", funcargs)
 
 
 def smart_escape(thing: Any) -> Any:
