@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 target/
 .python-version
+*.egg-info/
 
 # Ignore example repos, but specifically includes the README, cloning file, and the analysis notebook 
 examples/*

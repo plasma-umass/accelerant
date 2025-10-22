@@ -81,3 +81,7 @@ def optimize(
     finally:
         if created_loop is not None and not created_loop.is_closed():
             created_loop.close()
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
