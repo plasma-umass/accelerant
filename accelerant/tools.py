@@ -4,8 +4,6 @@ from abc import ABC, abstractmethod
 from agents import RunContextWrapper, function_tool
 from llm_utils import number_group_of_lines
 from pydantic import BaseModel, Field
-import openai
-from openai.types.chat import ChatCompletionToolParam
 
 from accelerant.lsp import TOP_LEVEL_SYMBOL_KINDS, uri_to_relpath
 from accelerant.util import find_symbol, truncate_for_llm
