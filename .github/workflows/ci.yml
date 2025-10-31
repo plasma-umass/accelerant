@@ -32,3 +32,8 @@ jobs:
     - name: Typecheck with mypy
       run: |
         uv run mypy .
+    
+    - name: Lint and format with ruff
+      run: |
+        uvx ruff check
+        uvx ruff format --check

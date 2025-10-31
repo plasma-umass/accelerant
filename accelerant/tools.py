@@ -2,12 +2,10 @@ from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
 import subprocess
-from typing import Any, Dict, List, Optional
-from abc import ABC, abstractmethod
-from agents import RunContextWrapper, Tool, function_tool
+from typing import Any, Optional
+from agents import RunContextWrapper, function_tool
 from llm_utils import number_group_of_lines
 from perfparser import LineLoc
-from pydantic import BaseModel, Field
 
 from accelerant.chat_interface import CodeSuggestion
 from accelerant.fs_sandbox import FsSandbox
