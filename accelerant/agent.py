@@ -32,8 +32,9 @@ def run_agent(
 ) -> AgentResult:
     set_trace_processors([LoggingTracingProcessor()])
     ag_tools: list[Tool] = [
-        tools.get_profiler_data,
         tools.edit_code,
+        tools.check_codebase_for_errors,
+        tools.get_profiler_data,
         tools.get_info,
         tools.get_references,
         tools.get_surrounding_code,
@@ -42,6 +43,7 @@ def run_agent(
     agent = Agent(
         name="Code Optimization Agent",
         instructions=system_prompt(lang=project.lang()),
+        model=ag_config["model_id"],
         tools=ag_tools,
     )
 

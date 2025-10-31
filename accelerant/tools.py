@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
+import subprocess
 from typing import Any, Dict, List, Optional
 from abc import ABC, abstractmethod
 from agents import RunContextWrapper, Tool, function_tool
@@ -34,6 +35,23 @@ def edit_code(
         suggs: A list of code suggestions that should be applied.
     """
     apply_simultaneous_suggestions(ctx.context.project, ctx.context.active_fs, suggs)
+
+
+@function_tool
+def check_codebase_for_errors(
+    ctx: RunContextWrapper[AgentContext],
+) -> str:
+    """Check the codebase for errors using the appropriate build tool."""
+    assert ctx.context.project._lang == "rust", (
+        "Only Rust is supported for code checking"
+    )
+    try:
+        subprocess.run(
+            ["cargo", "check", "--all"], check=True, cwd=str(ctx.context.project._root)
+        )
+    except subprocess.CalledProcessError as e:
+        return f"ERROR: Codebase has errors:\n\n{e}"
+    return "OK: Codebase has no errors!"
 
 
 @function_tool
