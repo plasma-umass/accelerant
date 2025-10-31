@@ -34,7 +34,6 @@ def apply_simultaneous_suggestions(
         for line in old_lines:
             last = line_starts[-1]
             line_starts.append(last + len(line))
-        print("*", line_starts)
 
         # FIXME: handle conflicting suggestions (i.e. that overlap)
         symbols = project.lsp().syncexec(
@@ -44,18 +43,16 @@ def apply_simultaneous_suggestions(
             line_starts[loc["start"]["line"]] + loc["start"]["character"],
             line_starts[loc["end"]["line"]] + loc["end"]["character"],
         )
-        print("SYM", relpath, symbols)
         suggs = list(
             map(
                 lambda tup: (rng_to_offset(tup[0]), tup[1]),
                 map(
-                    lambda s: (get_symbol_range_for_suggestion(symbols, s), s.newCode),
+                    lambda s: (get_symbol_range_for_suggestion(symbols, s), s.new_code),
                     suggs_raw,
                 ),
             )
         )
         suggs = list(sorted(suggs, key=lambda tup: tup[0][1], reverse=True))
-        print(abspath, suggs)
 
         new_text = []
         cur_end = len(old_text)
@@ -75,6 +72,6 @@ def get_symbol_range_for_suggestion(
     symbols: Union[list[lsp_types.DocumentSymbol], list[lsp_types.SymbolInformation]],
     s: CodeSuggestion,
 ) -> lsp_types.Range:
-    rng = find_range_by_name(symbols, s.regionName)
-    assert rng is not None, f"Could not find symbol {s.regionName}"
+    rng = find_range_by_name(symbols, s.region_name)
+    assert rng is not None, f"Could not find symbol {s.region_name}"
     return rng

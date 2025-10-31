@@ -1,11 +1,17 @@
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from itertools import islice
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 from abc import ABC, abstractmethod
-from agents import RunContextWrapper, function_tool
+from agents import RunContextWrapper, Tool, function_tool
 from llm_utils import number_group_of_lines
+from perfparser import LineLoc
 from pydantic import BaseModel, Field
 
+from accelerant.chat_interface import CodeSuggestion
+from accelerant.fs_sandbox import FsSandbox
 from accelerant.lsp import TOP_LEVEL_SYMBOL_KINDS, uri_to_relpath
+from accelerant.patch import apply_simultaneous_suggestions
 from accelerant.util import find_symbol, truncate_for_llm
 from accelerant.project import Project
 
@@ -13,6 +19,62 @@ from accelerant.project import Project
 @dataclass
 class AgentContext:
     project: Project
+    active_fs: FsSandbox
+    initial_perf_data_path: Optional[Path]
+
+
+@function_tool
+def edit_code(
+    ctx: RunContextWrapper[AgentContext],
+    suggs: list[CodeSuggestion],
+) -> None:
+    """Apply edits to the codebase based on suggestions.
+
+    Args:
+        suggs: A list of code suggestions that should be applied.
+    """
+    apply_simultaneous_suggestions(ctx.context.project, ctx.context.active_fs, suggs)
+
+
+@function_tool
+def get_profiler_data(
+    ctx: RunContextWrapper[AgentContext],
+) -> list[dict[str, Any]]:
+    """Get a summary of the objective performance data gathered by a profiler."""
+    try:
+        perf_data_path = ctx.context.initial_perf_data_path
+        if perf_data_path is None:
+            raise ValueError("No initial performance data path provided")
+        project = ctx.context.project
+        perf_data = project.perf_data(perf_data_path)
+        perf_tabulated = perf_data.tabulate()
+        NUM_HOTSPOTS = 5
+
+        def get_parent_region(loc: LineLoc) -> Optional[str]:
+            parent_sym = project.lsp().syncexec(
+                project.lsp().request_nearest_parent_symbol(
+                    loc.path, loc.line - 1, TOP_LEVEL_SYMBOL_KINDS
+                ),
+            )
+            if parent_sym is None:
+                return None
+            return parent_sym["name"]
+
+        hotspots = islice(
+            map(
+                lambda x: {
+                    "parent_region": get_parent_region(x[0]) or "<unknown>",
+                    "loc": x[0],
+                    "pct_time": x[1] * 100,
+                },
+                filter(lambda x: x[0].line > 0, perf_tabulated),
+            ),
+            NUM_HOTSPOTS,
+        )
+        return list(hotspots)
+    except Exception as e:
+        print("ERROR", e)
+        raise e
 
 
 @function_tool

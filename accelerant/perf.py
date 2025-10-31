@@ -2,15 +2,14 @@ from pathlib import Path
 from typing import List, Optional
 from perfparser import get_perf_data, LineLoc
 
-from accelerant.project import Project
 from perfparser import AttributedPerf
 
 
 class PerfData:
     _data: AttributedPerf
 
-    def __init__(self, perf_data_path: Path, project: Project):
-        self._data = get_perf_data(str(perf_data_path), str(project._root))
+    def __init__(self, perf_data_path: Path, project_root: Path):
+        self._data = get_perf_data(str(perf_data_path), str(project_root))
 
     def lookup_pct_time(self, loc: LineLoc) -> Optional[float]:
         if loc not in self._data.hit_count:

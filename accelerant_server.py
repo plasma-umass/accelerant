@@ -4,8 +4,7 @@ from typing import Optional
 from flask import Flask, request
 from perfparser import LineLoc
 
-from accelerant.chat import optimize_locations
-from accelerant.perf import PerfData
+from accelerant.agent import AgentConfig, AgentInput, run_agent
 from accelerant.project import Project
 
 app = Flask(__name__)
@@ -56,28 +55,22 @@ def optimize(
                 created_loop = loop
 
         project = Project(project_root, "rust")
-        perf_data = None
-        if perf_data_path:
-            print("Loading perf data")
-            perf_data = PerfData(perf_data_path, project)
-        if filename is None or lineno is None:
-            assert perf_data is not None
-            lines = []
-            perf_tabulated = perf_data.tabulate()
-            num_hotspots_to_keep = 5
-            for hotspot_loc, _ in perf_tabulated[:num_hotspots_to_keep]:
-                filename, lineno = hotspot_loc.path, hotspot_loc.line
-                lines.append(LineLoc(filename, lineno))
-        else:
-            lines = [LineLoc(filename, lineno)]
-
         print("Starting LSP server")
         with project.lsp().start_server():
-            print("Starting chat")
-            with project.fs_sandbox() as fs:
-                results = optimize_locations(project, fs, lines, perf_data, model_id)
-                fs.persist_all()
-                return results
+            print("Starting agent")
+            ag_input: AgentInput = {
+                "perf_data_path": perf_data_path,
+                "hotspot_lines": [LineLoc(filename, lineno)]
+                if filename is not None and lineno is not None
+                else None,
+            }
+            ag_config: AgentConfig = {"model_id": model_id}
+            results = run_agent(
+                project,
+                ag_input,
+                ag_config,
+            )
+            return results["final_message"]
     finally:
         if created_loop is not None and not created_loop.is_closed():
             created_loop.close()

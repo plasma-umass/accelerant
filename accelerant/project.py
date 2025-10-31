@@ -6,24 +6,32 @@ from typing import List, Optional
 
 from accelerant.fs_sandbox import FsSandbox
 from accelerant.lsp import LSP
+from accelerant.perf import PerfData
 
 
 class Project:
     _root: Path
     _lang: str
     _lsp: Optional[LSP]
+    _perf_data: dict[Path, PerfData]
 
     def __init__(self, root, lang):
         self._root = root
         self._lang = lang
         self._lsp = None
+        self._perf_data = {}
 
     def lsp(self) -> LSP:
         if self._lsp is None:
             self._lsp = LSP(self._root, self._lang)
         return self._lsp
 
-    def fs_sandbox(self) -> FsSandbox:
+    def perf_data(self, perf_data_path: Path) -> PerfData:
+        if perf_data_path not in self._perf_data:
+            self._perf_data[perf_data_path] = PerfData(perf_data_path, self._root)
+        return self._perf_data[perf_data_path]
+
+    def new_fs_sandbox(self) -> FsSandbox:
         return FsSandbox(self._root)
 
     def get_line(self, filename: str, line: int) -> str:
