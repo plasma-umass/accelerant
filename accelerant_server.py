@@ -18,7 +18,7 @@ def route_optimize() -> str:
     filename = request.args.get("filename")
     lineno = request.args.get("line", type=int)
     perf_data_path = request.args.get("perfDataPath", type=Path)
-    model_id = request.args.get("modelId", "o3-mini")
+    model_id = request.args.get("modelId", "gpt-4.1")
 
     if (filename is None or lineno is None) and perf_data_path is None:
         raise Exception(
