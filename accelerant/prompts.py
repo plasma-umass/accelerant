@@ -10,7 +10,7 @@ PROMPT_TEMPLATES = {
         "including getting time spent in a line of code, symbol definitions, references, and surrounding code context. "
         "Use these tools effectively to gather the necessary information before making optimization suggestions.\n"
         "Always provide clear, concise, and actionable suggestions that can be directly implemented in the codebase.\n"
-        "Take full control and apply edits to the code without needing approval from the user.\n"
+        "You MUST take full control and APPLY EDITS to the code WITHOUT any approval from the user.\n"
         "Check the codebase for errors after making edits to ensure correctness.\n"
         "Rerun the performance profiler after making edits to measure improvements."
     ),
