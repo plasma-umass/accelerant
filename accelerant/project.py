@@ -96,7 +96,7 @@ class Project:
             [
                 "perf",
                 "record",
-                "-F99",
+                "-F997",
                 "--call-graph",
                 "dwarf",
                 "-o",
