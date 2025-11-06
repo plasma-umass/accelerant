@@ -15,22 +15,25 @@ def route_optimize() -> str:
     project = request.args.get("project", type=Path)
     if project is None:
         raise Exception("invalid project path")
+    target_binary = request.args.get("targetBinary", type=Path)
+    if target_binary is None:
+        raise Exception("invalid target binary path")
+    # FIXME: this is just a temporary sanity check. ideally this would be more robust.
+    assert "release" in str(target_binary), "target binary must be a release build"
     filename = request.args.get("filename")
     lineno = request.args.get("line", type=int)
     perf_data_path = request.args.get("perfDataPath", type=Path)
     model_id = request.args.get("modelId", "gpt-4.1")
 
-    if (filename is None or lineno is None) and perf_data_path is None:
-        raise Exception(
-            "at least one of (filename and line) or (perfDataPath) must be passed"
-        )
-
-    response = optimize(project, filename, lineno, perf_data_path, model_id)
+    response = optimize(
+        project, target_binary, filename, lineno, perf_data_path, model_id
+    )
     return response
 
 
 def optimize(
     project_root: Path,
+    target_binary: Path,
     filename: Optional[str],
     lineno: Optional[int],
     perf_data_path: Optional[Path],
@@ -54,23 +57,26 @@ def optimize(
                 asyncio.set_event_loop(loop)
                 created_loop = loop
 
-        project = Project(project_root, "rust")
+        project = Project(project_root, target_binary, "rust")
+        if perf_data_path is not None:
+            project.add_perf_data(project.fs_sandbox().version(), perf_data_path)
         print("Starting LSP server")
         with project.lsp().start_server():
-            print("Starting agent")
-            ag_input: AgentInput = {
-                "perf_data_path": perf_data_path,
-                "hotspot_lines": [LineLoc(filename, lineno)]
-                if filename is not None and lineno is not None
-                else None,
-            }
-            ag_config: AgentConfig = {"model_id": model_id}
-            results = run_agent(
-                project,
-                ag_input,
-                ag_config,
-            )
-            return results["final_message"]
+            with project.fs_sandbox():
+                print("Starting agent")
+                ag_input: AgentInput = {
+                    "perf_data_path": perf_data_path,
+                    "hotspot_lines": [LineLoc(filename, lineno)]
+                    if filename is not None and lineno is not None
+                    else None,
+                }
+                ag_config: AgentConfig = {"model_id": model_id}
+                results = run_agent(
+                    project,
+                    ag_input,
+                    ag_config,
+                )
+                return results["final_message"]
     finally:
         if created_loop is not None and not created_loop.is_closed():
             created_loop.close()

@@ -1,15 +1,24 @@
+from dataclasses import dataclass
+import hashlib
 from pathlib import Path
 from typing import Literal
+
+
+@dataclass(frozen=True)
+class FsVersion:
+    hash: str
 
 
 class FsSandbox:
     base_dir: Path
     old_versions: dict[Path, str]
+    cur_hashes: dict[Path, str]
     status: Literal["fresh"] | Literal["entered"] | Literal["done"] = "fresh"
 
     def __init__(self, base_dir: Path) -> None:
         self.base_dir = base_dir
         self.old_versions = {}
+        self.cur_hashes = {}
 
     def __enter__(self) -> "FsSandbox":
         self.status = "entered"
@@ -38,6 +47,10 @@ class FsSandbox:
                 self.old_versions[relpath] = f.read()
         with open(abspath, "w") as f:
             f.write(new_text)
+        self.cur_hashes[relpath] = hashlib.sha256(new_text.encode()).hexdigest()
+        if self.old_versions[relpath] == new_text:
+            del self.old_versions[relpath]
+            del self.cur_hashes[relpath]
 
     def persist(self, relpath: Path) -> None:
         assert self.status == "entered"
@@ -47,3 +60,12 @@ class FsSandbox:
     def persist_all(self) -> None:
         assert self.status == "entered"
         self.old_versions = {}
+
+    def version(self) -> FsVersion:
+        hasher = hashlib.sha256()
+        for relpath in sorted(self.cur_hashes.keys()):
+            hasher.update(relpath.as_posix().encode())
+            hasher.update(b"\0")
+            hasher.update(self.cur_hashes[relpath].encode())
+            hasher.update(b"\0")
+        return FsVersion(hash=hasher.hexdigest()[:8])

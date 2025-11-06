@@ -34,7 +34,7 @@ def run_agent(
     ag_tools: list[Tool] = [
         tools.edit_code,
         tools.check_codebase_for_errors,
-        tools.get_profiler_data,
+        tools.run_perf_profiler,
         tools.get_info,
         tools.get_references,
         tools.get_surrounding_code,
@@ -47,22 +47,17 @@ def run_agent(
         tools=ag_tools,
     )
 
-    with project.new_fs_sandbox() as fs:
-        ag_context = AgentContext(
-            project=project,
-            active_fs=fs,
-            initial_perf_data_path=ag_input["perf_data_path"],
-        )
-        prompt = user_prompt(
-            lang=project.lang(), hotspot_lines=ag_input["hotspot_lines"] or []
-        )
-        result = Runner.run_sync(
-            agent,
-            prompt,
-            context=ag_context,
-            max_turns=100,
-        ).final_output
-        assert result is not None
-        final_message = str(result)
-        fs.persist_all()
-        return AgentResult(final_message=final_message)
+    ag_context = AgentContext(project=project)
+    prompt = user_prompt(
+        lang=project.lang(), hotspot_lines=ag_input["hotspot_lines"] or []
+    )
+    result = Runner.run_sync(
+        agent,
+        prompt,
+        context=ag_context,
+        max_turns=100,
+    ).final_output
+    assert result is not None
+    final_message = str(result)
+    project.fs_sandbox().persist_all()
+    return AgentResult(final_message=final_message)

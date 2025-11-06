@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from itertools import islice
-from pathlib import Path
+import shutil
 import subprocess
 from typing import Any, Optional
 from agents import RunContextWrapper, function_tool
@@ -8,7 +8,6 @@ from llm_utils import number_group_of_lines
 from perfparser import LineLoc
 
 from accelerant.chat_interface import CodeSuggestion
-from accelerant.fs_sandbox import FsSandbox
 from accelerant.lsp import TOP_LEVEL_SYMBOL_KINDS, uri_to_relpath
 from accelerant.patch import apply_simultaneous_suggestions
 from accelerant.util import find_symbol, truncate_for_llm
@@ -18,8 +17,6 @@ from accelerant.project import Project
 @dataclass
 class AgentContext:
     project: Project
-    active_fs: FsSandbox
-    initial_perf_data_path: Optional[Path]
 
 
 @function_tool
@@ -32,7 +29,9 @@ def edit_code(
     Args:
         suggs: A list of code suggestions that should be applied.
     """
-    apply_simultaneous_suggestions(ctx.context.project, ctx.context.active_fs, suggs)
+    apply_simultaneous_suggestions(
+        ctx.context.project, ctx.context.project.fs_sandbox(), suggs
+    )
 
 
 @function_tool
@@ -43,9 +42,14 @@ def check_codebase_for_errors(
     assert ctx.context.project._lang == "rust", (
         "Only Rust is supported for code checking"
     )
+
+    cargo_path = shutil.which("cargo")
+    assert cargo_path is not None, "cargo not found in PATH"
     try:
         subprocess.run(
-            ["cargo", "check", "--all"], check=True, cwd=str(ctx.context.project._root)
+            [cargo_path, "check", "--all-targets"],
+            check=True,
+            cwd=str(ctx.context.project._root),
         )
     except subprocess.CalledProcessError as e:
         return f"ERROR: Codebase has errors:\n\n{e}"
@@ -53,16 +57,19 @@ def check_codebase_for_errors(
 
 
 @function_tool
-def get_profiler_data(
+def run_perf_profiler(
     ctx: RunContextWrapper[AgentContext],
 ) -> list[dict[str, Any]]:
-    """Get a summary of the objective performance data gathered by a profiler."""
+    """Run a performance profiler on the target binary and return the top hotspots."""
     try:
-        perf_data_path = ctx.context.initial_perf_data_path
-        if perf_data_path is None:
-            raise ValueError("No initial performance data path provided")
         project = ctx.context.project
-        perf_data = project.perf_data(perf_data_path)
+        version = project.fs_sandbox().version()
+        perf_data = project.perf_data(version)
+        if perf_data is None:
+            project.build_for_profiling()
+            project.run_profiler()
+            perf_data = project.perf_data(version)
+        assert perf_data is not None, "perf data should be available after profiling"
         perf_tabulated = perf_data.tabulate()
         NUM_HOTSPOTS = 5
 
@@ -76,18 +83,20 @@ def get_profiler_data(
                 return None
             return parent_sym["name"]
 
-        hotspots = islice(
-            map(
-                lambda x: {
-                    "parent_region": get_parent_region(x[0]) or "<unknown>",
-                    "loc": x[0],
-                    "pct_time": x[1] * 100,
-                },
-                filter(lambda x: x[0].line > 0, perf_tabulated),
-            ),
-            NUM_HOTSPOTS,
+        hotspots = list(
+            islice(
+                map(
+                    lambda x: {
+                        "parent_region": get_parent_region(x[0]) or "<unknown>",
+                        "loc": x[0],
+                        "pct_time": x[1] * 100,
+                    },
+                    filter(lambda x: x[0].line > 0, perf_tabulated),
+                ),
+                NUM_HOTSPOTS,
+            )
         )
-        return list(hotspots)
+        return hotspots
     except Exception as e:
         print("ERROR", e)
         raise e
@@ -240,8 +249,8 @@ def get_surrounding_code(
             filename, line - 1, TOP_LEVEL_SYMBOL_KINDS
         ),
     )
-    # FIXME: avoid crashing
-    assert parent_sym is not None
+    if parent_sym is None:
+        raise ValueError(f"no surrounding top-level symbol found at {filename}:{line}")
     sline = parent_sym["range"]["start"]["line"] + 1
     lines = project.get_range(filename, parent_sym["range"])
     return {
