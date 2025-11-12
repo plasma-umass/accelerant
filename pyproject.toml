@@ -5,20 +5,18 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "flask==3.1.0",
-    "llm-utils==0.2.8",
+    "flask>=3.1.0",
+    "llm-utils>=0.2.8",
     "multilspy",
-    "openai-agents==0.4.1",
+    "openai-agents>=0.4.1",
     "perfparser",
-    "pydantic==2.12.3",
-    "requests==2.32.3",
-    "rich==13.9.4",
+    "pydantic>=2.12.3",
+    "requests>=2.32.3",
+    "rich>=13.9.4",
 ]
 
 [dependency-groups]
-dev = [
-    "mypy==1.15.0",
-]
+dev = ["mypy>=1.15.0"]
 
 [tool.uv.sources]
 multilspy = { git = "https://github.com/camelid/multilspy.git", rev = "a64a5657c36789ed589454fb6e658637b6e982fd" }

@@ -24,18 +24,18 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "flask", specifier = "==3.1.0" },
-    { name = "llm-utils", specifier = "==0.2.8" },
+    { name = "flask", specifier = ">=3.1.0" },
+    { name = "llm-utils", specifier = ">=0.2.8" },
     { name = "multilspy", git = "https://github.com/camelid/multilspy.git?rev=a64a5657c36789ed589454fb6e658637b6e982fd" },
-    { name = "openai-agents", specifier = "==0.4.1" },
+    { name = "openai-agents", specifier = ">=0.4.1" },
     { name = "perfparser", directory = "perfparser" },
-    { name = "pydantic", specifier = "==2.12.3" },
-    { name = "requests", specifier = "==2.32.3" },
-    { name = "rich", specifier = "==13.9.4" },
+    { name = "pydantic", specifier = ">=2.12.3" },
+    { name = "requests", specifier = ">=2.32.3" },
+    { name = "rich", specifier = ">=13.9.4" },
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "mypy", specifier = "==1.15.0" }]
+dev = [{ name = "mypy", specifier = ">=1.15.0" }]
 
 [[package]]
 name = "annotated-types"
