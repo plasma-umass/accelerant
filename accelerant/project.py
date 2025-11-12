@@ -41,14 +41,21 @@ class Project:
         return self._lsp
 
     def perf_data(self, version: Optional[FsVersion] = None) -> Optional[PerfData]:
+        perf_data_path = self.perf_data_path(version)
+        if perf_data_path is None:
+            return None
+
+        if perf_data_path not in self._perf_data_map:
+            self._perf_data_map[perf_data_path] = PerfData(perf_data_path, self._root)
+        return self._perf_data_map[perf_data_path]
+
+    def perf_data_path(self, version: Optional[FsVersion] = None) -> Optional[Path]:
         if version is None:
             version = self.fs_sandbox().version()
         if version not in self._perf_per_version:
             return None
         perf_data_path = self._perf_per_version[version]
-        if perf_data_path not in self._perf_data_map:
-            self._perf_data_map[perf_data_path] = PerfData(perf_data_path, self._root)
-        return self._perf_data_map[perf_data_path]
+        return perf_data_path
 
     def add_perf_data(self, version: FsVersion, perf_data_path: Path) -> None:
         self._perf_per_version[version] = perf_data_path

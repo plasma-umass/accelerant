@@ -5,29 +5,26 @@
 1. Git clone
 2. Install [`uv`](https://github.com/astral-sh/uv) if not already installed
 3. To fix perf debuginfo issues: `cargo install addr2line --features="bin"`
+4. If you want support for sending flamegraphs to the LLM:
+    a. `cargo install flamegraph`
+    a. `cargo install resvg`
 
 ## Basic usage
 
-First, build your target program with optimizations on and debuginfo enabled, and then profile it with `perf` using something like the following:
-
-```console
-$ perf record -F99 --call-graph dwarf ./your-program
-```
-
-Then, in the `accelerant` repository, run:
+In the `accelerant` repository, run:
 
 ```console
 $ uv run accelerant_server.py
 ```
 
-Finally, in a separate terminal, run:
+In a separate terminal, run:
 
 ```console
-$ curl 'http://127.0.0.1:5000/optimize?project=PATH_TO_PROJECT_ROOT&perfDataPath=ABSOLUTE_PATH_TO_PERF_DATA'
+$ curl 'http://127.0.0.1:5000/optimize?project=PATH_TO_PROJECT_ROOT&targetBinary=target/release/REST_OF_PATH_TO_EXECUTABLE_TO_OPTIMIZE'
 ```
 
-Alternatively, you can ask to optimize a specific line without `perf` information using the following:
+Accelerant will automatically build, run, and profile your project using `cargo` and `perf`.
 
-```console
-$ curl 'http://127.0.0.1:5000/optimize?project=PATH_TO_PROJECT_ROOT&filename=RELATIVE_PATH_TO_FILE_IN_PROJECT&line=LINE_NUMBER_IN_FILE'
-```
+If you've already run the `perf` profiler and collected a `perf.data` file, you can give it to Accelerant by appending a `perfDataPath` query parameter with the path to the file.
+
+Also, if you know a particular line in your project is a hotspot, you can pass the (relative) path to its containing file in a `filename` paramater, with the line number in `line`.

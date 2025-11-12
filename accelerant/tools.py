@@ -2,14 +2,16 @@ from dataclasses import dataclass
 from itertools import islice
 import shutil
 import subprocess
-from typing import Any, Optional
-from agents import RunContextWrapper, function_tool
+from typing import Optional
+from agents import RunContextWrapper, ToolOutputImage, function_tool
 from llm_utils import number_group_of_lines
 from perfparser import LineLoc
 
 from accelerant.chat_interface import CodeSuggestion
+from accelerant.flamegraph import make_flamegraph_png, png_to_data_url
 from accelerant.lsp import TOP_LEVEL_SYMBOL_KINDS, uri_to_relpath
 from accelerant.patch import apply_simultaneous_suggestions
+from accelerant.perf import PerfData
 from accelerant.util import find_symbol, truncate_for_llm
 from accelerant.project import Project
 
@@ -56,50 +58,65 @@ def check_codebase_for_errors(
     return "OK: Codebase has no errors!"
 
 
+def _shared_build_and_run_perf(project: Project) -> PerfData:
+    version = project.fs_sandbox().version()
+    perf_data = project.perf_data(version)
+    if perf_data is None:
+        project.build_for_profiling()
+        project.run_profiler()
+        perf_data = project.perf_data(version)
+    assert perf_data is not None, "perf data should be available after profiling"
+    return perf_data
+
+
 @function_tool
 def run_perf_profiler(
     ctx: RunContextWrapper[AgentContext],
-) -> list[dict[str, Any]]:
+) -> list[dict]:
     """Run a performance profiler on the target binary and return the top hotspots."""
-    try:
-        project = ctx.context.project
-        version = project.fs_sandbox().version()
-        perf_data = project.perf_data(version)
-        if perf_data is None:
-            project.build_for_profiling()
-            project.run_profiler()
-            perf_data = project.perf_data(version)
-        assert perf_data is not None, "perf data should be available after profiling"
-        perf_tabulated = perf_data.tabulate()
-        NUM_HOTSPOTS = 5
+    project = ctx.context.project
+    perf_data = _shared_build_and_run_perf(project)
+    perf_tabulated = perf_data.tabulate()
+    NUM_HOTSPOTS = 5
 
-        def get_parent_region(loc: LineLoc) -> Optional[str]:
-            parent_sym = project.lsp().syncexec(
-                project.lsp().request_nearest_parent_symbol(
-                    loc.path, loc.line - 1, TOP_LEVEL_SYMBOL_KINDS
-                ),
-            )
-            if parent_sym is None:
-                return None
-            return parent_sym["name"]
-
-        hotspots = list(
-            islice(
-                map(
-                    lambda x: {
-                        "parent_region": get_parent_region(x[0]) or "<unknown>",
-                        "loc": x[0],
-                        "pct_time": x[1] * 100,
-                    },
-                    filter(lambda x: x[0].line > 0, perf_tabulated),
-                ),
-                NUM_HOTSPOTS,
-            )
+    def get_parent_region(loc: LineLoc) -> Optional[str]:
+        parent_sym = project.lsp().syncexec(
+            project.lsp().request_nearest_parent_symbol(
+                loc.path, loc.line - 1, TOP_LEVEL_SYMBOL_KINDS
+            ),
         )
-        return hotspots
-    except Exception as e:
-        print("ERROR", e)
-        raise e
+        if parent_sym is None:
+            return None
+        return parent_sym["name"]
+
+    hotspots = list(
+        islice(
+            map(
+                lambda x: {
+                    "parent_region": get_parent_region(x[0]) or "<unknown>",
+                    "loc": x[0],
+                    "pct_time": x[1] * 100,
+                },
+                filter(lambda x: x[0].line > 0, perf_tabulated),
+            ),
+            NUM_HOTSPOTS,
+        )
+    )
+    return hotspots
+
+
+@function_tool
+def generate_flamegraph(
+    ctx: RunContextWrapper[AgentContext],
+) -> ToolOutputImage:
+    """Generate a flamegraph PNG image from the performance data, building the project and running the profiler if necessary."""
+    project = ctx.context.project
+    perf_data = _shared_build_and_run_perf(project)
+
+    flamegraph_data = make_flamegraph_png(perf_data.data_path())
+    flamegraph_data_url = png_to_data_url(flamegraph_data)
+    flamegraph_output = ToolOutputImage(image_url=flamegraph_data_url, detail="high")
+    return flamegraph_output
 
 
 @function_tool

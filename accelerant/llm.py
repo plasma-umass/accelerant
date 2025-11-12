@@ -16,11 +16,19 @@ class LoggingTracingProcessor(TracingProcessor):
         del self.active_traces[trace.trace_id]
 
     def on_span_start(self, span):
-        print(f"[blue]Starting span:[/blue] {span.span_data.export()}")
+        data = span.span_data.export()
+        if "data:image/png;base64" in str(data):
+            print("[blue]Starting span that includes image data:[/blue]")
+        else:
+            print(f"[blue]Starting span:[/blue] {data}")
         self.active_spans[span.span_id] = span
 
     def on_span_end(self, span):
-        print(f"[magenta]Ending span:[/magenta] {span.span_data.export()}")
+        data = span.span_data.export()
+        if "data:image/png;base64" in str(data):
+            print("[magenta]Ending span that includes image data:[/magenta]")
+        else:
+            print(f"[magenta]Ending span:[/magenta] {data}")
         del self.active_spans[span.span_id]
 
     def shutdown(self):
