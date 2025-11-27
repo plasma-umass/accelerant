@@ -28,7 +28,7 @@ requires-dist = [
     { name = "llm-utils", specifier = ">=0.2.8" },
     { name = "multilspy", git = "https://github.com/camelid/multilspy.git?rev=a64a5657c36789ed589454fb6e658637b6e982fd" },
     { name = "openai-agents", specifier = ">=0.4.1" },
-    { name = "perfparser", directory = "perfparser" },
+    { name = "perfparser", directory = "perfparser-py" },
     { name = "pydantic", specifier = ">=2.12.3" },
     { name = "requests", specifier = ">=2.32.3" },
     { name = "rich", specifier = ">=13.9.4" },
@@ -552,7 +552,7 @@ wheels = [
 
 [[package]]
 name = "perfparser"
-source = { directory = "perfparser" }
+source = { directory = "perfparser-py" }
 
 [[package]]
 name = "psutil"

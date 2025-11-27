@@ -20,7 +20,7 @@ dev = ["mypy>=1.15.0"]
 
 [tool.uv.sources]
 multilspy = { git = "https://github.com/camelid/multilspy.git", rev = "a64a5657c36789ed589454fb6e658637b6e982fd" }
-perfparser = { path = "./perfparser" }
+perfparser = { path = "./perfparser-py" }
 
 [tool.setuptools]
 packages = ["accelerant"]
