@@ -1,16 +1,17 @@
 use std::cmp;
 use std::collections::HashMap;
-use std::io::{self, BufRead, BufReader};
+use std::io;
 use std::path::Path;
 use std::process::Command;
 
+use perfparser::Parser;
 use pyo3::{pyclass, pymethods};
 
 use crate::LineLoc;
 
 pub fn run_perf_script(data_path: &Path) -> io::Result<Vec<u8>> {
     let output = Command::new("perf")
-        .args(&["script", "-Fip,srcline", "--full-source-path", "-i"])
+        .args(&["script", "-F+srcline", "--full-source-path", "-i"])
         .arg(data_path)
         .output()?;
     if output.status.success() {
@@ -27,14 +28,22 @@ pub fn parse_and_attribute<R: io::Read>(r: R, project_root: &Path) -> io::Result
             .and_then(Path::to_str)
             .map(str::to_owned)
     };
-    let mut lines = BufReader::new(r).lines().filter_map(Result::ok);
+    let parser = Parser::new(r);
     let mut hit_count = HashMap::new();
 
-    loop {
-        match extract_srcline_from_perf_entry(&mut lines, is_srcline_good) {
-            Err(ExtractError::Done) => break,
-            Err(ExtractError::Invalid) => continue,
-            Ok(loc) => *hit_count.entry(loc).or_default() += 1,
+    for event in parser {
+        let lineloc = event
+            .stack
+            .iter()
+            .filter_map(|frame| frame.srcline.as_ref())
+            .find_map(|srcline| {
+                is_srcline_good(Path::new(&srcline.path)).map(|path| LineLoc {
+                    path,
+                    line: srcline.line as u64,
+                })
+            });
+        if let Some(lineloc) = lineloc {
+            *hit_count.entry(lineloc).or_insert(0) += event.period.unwrap_or(1) as u64;
         }
     }
 
@@ -43,43 +52,6 @@ pub fn parse_and_attribute<R: io::Read>(r: R, project_root: &Path) -> io::Result
         hit_count,
         total_hits,
     })
-}
-
-enum ExtractError {
-    Invalid,
-    Done,
-}
-
-/// Parses a `perf script` entry from the provided iterator,
-/// and returns the first "good" line location from the stack trace,
-/// based on the provided callback.
-///
-/// Meant to be run on output from `perf script -Fip,srcline --full-source-path`.
-fn extract_srcline_from_perf_entry(
-    mut lines: impl Iterator<Item = String>,
-    is_srcline_good: impl Fn(&Path) -> Option<String>,
-) -> Result<LineLoc, ExtractError> {
-    loop {
-        // ip/sym
-        if lines.next().ok_or(ExtractError::Done)?.trim().is_empty() {
-            return Err(ExtractError::Invalid);
-        }
-        // srcline
-        let srcline_raw = lines.next().ok_or(ExtractError::Done)?;
-        let srcline = srcline_raw.trim();
-        if srcline.is_empty() {
-            return Err(ExtractError::Invalid);
-        }
-        let (loc, _) = srcline.split_once(" ").unwrap_or((srcline, ""));
-        if !loc.contains(':') {
-            return Err(ExtractError::Invalid);
-        }
-        let (path, lineno_str) = loc.rsplit_once(":").ok_or(ExtractError::Invalid)?;
-        let line = lineno_str.parse().map_err(|_| ExtractError::Invalid)?;
-        if let Some(path) = is_srcline_good(Path::new(path)) {
-            return Ok(LineLoc { path, line });
-        }
-    }
 }
 
 #[pyclass]
