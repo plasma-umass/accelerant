@@ -120,6 +120,32 @@ def generate_flamegraph(
 
 
 @function_tool
+def lookup_symbol(ctx: RunContextWrapper[AgentContext], symbol: str) -> dict:
+    """
+    Lookup a symbol -- in other words, the full path to a function, like `my_crate::my_module::my_function` -- and return its location in the codebase.
+
+    Args:
+        symbol: The full symbol name to look up.
+    """
+    project = ctx.context.project
+    binary_path = project.target_binary
+    try:
+        result = subprocess.run(
+            ["addr2line", "-e", str(binary_path), symbol + "+0x00"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        output = result.stdout.strip()
+        if output == "??:0":
+            return {"error": f"Symbol '{symbol}' not found in binary."}
+        filename, line = output.split(":")
+        return {"symbol": symbol, "filename": filename, "line": int(line)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@function_tool
 def get_info(
     ctx: RunContextWrapper[AgentContext], filename: str, line: int, symbol: str
 ) -> list[dict]:
