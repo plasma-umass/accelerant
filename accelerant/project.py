@@ -83,7 +83,10 @@ class Project:
             ],
             check=True,
             cwd=str(self._root),
-            env={"PATH": path_env_var},
+            env={
+                "PATH": path_env_var,
+                "RUSTFLAGS": "-C force-unwind-tables=yes -C force-frame-pointers=yes",
+            },
         )
 
     def run_profiler(

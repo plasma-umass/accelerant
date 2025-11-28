@@ -4,8 +4,7 @@
 
 1. Git clone
 2. Install [`uv`](https://github.com/astral-sh/uv) if not already installed
-3. To fix perf debuginfo issues: `cargo install addr2line --features="bin"`
-4. If you want support for sending flamegraphs to the LLM:
+3. If you want support for sending flamegraphs to the LLM:
     a. `cargo install flamegraph`
     a. `cargo install resvg`
 
