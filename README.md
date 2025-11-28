@@ -2,13 +2,19 @@
 
 ## Setup
 
+Prerequisites: Accelerant is currently designed for use on x86 Linux.
+
 1. Git clone
 2. Install [`uv`](https://github.com/astral-sh/uv) if not already installed
-3. If you want support for sending flamegraphs to the LLM:
+3. Install Linux `perf`
+4. If you want support for sending flamegraphs to the LLM:
     a. `cargo install flamegraph`
     a. `cargo install resvg`
 
 ## Basic usage
+
+First, run `sudo sh -c 'echo 1 >/proc/sys/kernel/perf_event_paranoid'` to get
+more accurate profiling of code that (transitively) uses syscalls.
 
 In the `accelerant` repository, run:
 
