@@ -59,8 +59,8 @@ def apply_simultaneous_suggestions(
         while suggs:
             sugg = suggs[0]
             suggs = suggs[1:]
-            if sugg[0][1] + 1 < cur_end:
-                new_text.append(old_text[sugg[0][1] + 1 : cur_end])
+            if sugg[0][1] < cur_end:
+                new_text.append(old_text[sugg[0][1] : cur_end])
             new_text.append(sugg[1])
             cur_end = sugg[0][0]
         new_text.append(old_text[0:cur_end])
