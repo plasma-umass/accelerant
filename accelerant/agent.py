@@ -37,7 +37,7 @@ def run_agent(
         tools.check_codebase_for_errors,
         tools.run_perf_profiler,
         # tools.generate_flamegraph,
-        tools.lookup_symbol,
+        tools.lookup_executable_symbol,
         tools.get_info,
         tools.get_references,
         tools.get_surrounding_code,

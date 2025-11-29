@@ -4,12 +4,9 @@ from pydantic import BaseModel
 class CodeSuggestion(BaseModel):
     """
     A suggestion to replace a region of code with new code.
-    The region is identified by filename and region_name (e.g., the name of the enclosing function).
+    The snippet identifying the old code must be unique within the file.
     """
 
     filename: str
-    region_name: str
-    """
-    The name of the code region being replaced, e.g., the name of a function or type definition.
-    """
+    old_code: str
     new_code: str

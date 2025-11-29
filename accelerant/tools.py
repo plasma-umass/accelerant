@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from itertools import islice
+from pathlib import Path
 import shutil
 import subprocess
 from typing import Optional
@@ -10,7 +11,6 @@ from perfparser import LineLoc
 from accelerant.chat_interface import CodeSuggestion
 from accelerant.flamegraph import make_flamegraph_png, png_to_data_url
 from accelerant.lsp import TOP_LEVEL_SYMBOL_KINDS, uri_to_relpath
-from accelerant.patch import apply_simultaneous_suggestions
 from accelerant.perf import PerfData
 from accelerant.util import find_symbol, truncate_for_llm
 from accelerant.project import Project
@@ -24,16 +24,29 @@ class AgentContext:
 @function_tool
 def edit_code(
     ctx: RunContextWrapper[AgentContext],
-    suggs: list[CodeSuggestion],
+    sugg: CodeSuggestion,
 ) -> None:
-    """Apply edits to the codebase based on suggestions.
+    """Apply a code suggestion to the project's code. The old code snippet must be unique within the file.
 
     Args:
-        suggs: A list of code suggestions that should be applied.
+        sugg: The code suggestion to apply.
     """
-    apply_simultaneous_suggestions(
-        ctx.context.project, ctx.context.project.fs_sandbox(), suggs
-    )
+    project = ctx.context.project
+    fs = project.fs_sandbox()
+
+    abspath = Path(project._root, sugg.filename)
+    old_text = fs.read_file(abspath)
+    count = old_text.count(sugg.old_code)
+    if count == 0:
+        raise ValueError(
+            f"Old code snippet not found in {sugg.filename} when applying suggestion."
+        )
+    elif count > 1:
+        raise ValueError(
+            f"Old code snippet is not unique in {sugg.filename} when applying suggestion."
+        )
+    new_text = old_text.replace(sugg.old_code, sugg.new_code)
+    fs.write_file(Path(abspath), new_text)
 
 
 @function_tool
@@ -120,7 +133,7 @@ def generate_flamegraph(
 
 
 @function_tool
-def lookup_symbol(ctx: RunContextWrapper[AgentContext], symbol: str) -> dict:
+def lookup_executable_symbol(ctx: RunContextWrapper[AgentContext], symbol: str) -> dict:
     """
     Lookup a symbol -- in other words, the full path to a function, like `my_crate::my_module::my_function` -- and return its location in the codebase.
 
@@ -128,10 +141,10 @@ def lookup_symbol(ctx: RunContextWrapper[AgentContext], symbol: str) -> dict:
         symbol: The full symbol name to look up.
     """
     project = ctx.context.project
-    binary_path = project.target_binary
+    binary_path = project.target_binary()
     try:
         result = subprocess.run(
-            ["addr2line", "-e", str(binary_path), symbol + "+0x00"],
+            ["addr2line", "-e", binary_path, symbol + "+0x00"],
             capture_output=True,
             text=True,
             check=True,
@@ -298,6 +311,6 @@ def get_surrounding_code(
     lines = project.get_range(filename, parent_sym["range"])
     return {
         "filename": filename,
-        "regionName": parent_sym["name"],
+        "region_name": parent_sym["name"],
         "code": number_group_of_lines(lines, max(sline, 1)),
     }
