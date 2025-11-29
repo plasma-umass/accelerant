@@ -5,10 +5,10 @@ from agents import Agent, Runner, Tool, set_trace_processors
 from perfparser import LineLoc
 
 from accelerant import tools
-from accelerant.llm import LoggingTracingProcessor
 from accelerant.project import Project
 from accelerant.prompts import system_prompt, user_prompt
 from accelerant.tools import AgentContext
+from accelerant.trace import LoggingTracingProcessor
 
 
 class AgentInput(TypedDict):
@@ -31,6 +31,7 @@ def run_agent(
     ag_config: AgentConfig,
 ) -> AgentResult:
     set_trace_processors([LoggingTracingProcessor()])
+
     ag_tools: list[Tool] = [
         tools.edit_code,
         tools.check_codebase_for_errors,
