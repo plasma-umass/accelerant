@@ -108,7 +108,7 @@ def run_perf_profiler(
                 lambda x: {
                     "parent_region": get_parent_region(x[0]) or "<unknown>",
                     "loc": x[0],
-                    "pct_time": x[1] * 100,
+                    "pct_time": round(x[1] * 100, 1),
                 },
                 filter(lambda x: x[0].line > 0, perf_tabulated),
             ),
