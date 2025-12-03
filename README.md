@@ -8,8 +8,8 @@ Prerequisites: Accelerant is currently designed for use on x86 Linux.
 2. Install [`uv`](https://github.com/astral-sh/uv) if not already installed
 3. Install Linux `perf`
 4. If you want support for sending flamegraphs to the LLM:
-    1. `cargo install flamegraph`
-    2. `cargo install resvg`
+  1. `cargo install flamegraph`
+  2. `cargo install resvg`
 
 ## Basic usage
 
@@ -28,8 +28,8 @@ In a separate terminal, run:
 $ curl 'http://127.0.0.1:5000/optimize?project=PATH_TO_PROJECT_ROOT&targetBinary=target/release/REST_OF_PATH_TO_EXECUTABLE_TO_OPTIMIZE'
 ```
 
-Accelerant will automatically build, run, and profile your project using `cargo` and `perf`.
+Accelerant will automatically build, run, and profile your project using `cargo` and `perf`. Note that the target binary path must be the version built with a release profile.
 
 If you've already run the `perf` profiler and collected a `perf.data` file, you can give it to Accelerant by appending a `perfDataPath` query parameter with the path to the file.
 
-Also, if you know a particular line in your project is a hotspot, you can pass the (relative) path to its containing file in a `filename` paramater, with the line number in `line`.
+Also, if you know a particular line in your project is a hotspot, you can pass the (relative) path to its containing file in a `filename` parameter, with the line number in `line`.
