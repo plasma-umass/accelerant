@@ -145,6 +145,7 @@ def lookup_executable_symbol(ctx: RunContextWrapper[AgentContext], symbol: str) 
     try:
         result = subprocess.run(
             ["addr2line", "-e", binary_path, symbol + "+0x00"],
+            cwd=str(project._root),
             capture_output=True,
             text=True,
             check=True,
