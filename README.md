@@ -8,8 +8,8 @@ Prerequisites: Accelerant is currently designed for use on x86 Linux.
 2. Install [`uv`](https://github.com/astral-sh/uv) if not already installed
 3. Install Linux `perf`
 4. If you want support for sending flamegraphs to the LLM:
-    a. `cargo install flamegraph`
-    a. `cargo install resvg`
+    1. `cargo install flamegraph`
+    2. `cargo install resvg`
 
 ## Basic usage
 
