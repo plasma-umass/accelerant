@@ -6,6 +6,7 @@ from perfparser import LineLoc
 
 from accelerant.agent import AgentConfig, AgentInput, run_agent
 from accelerant.project import Project
+from accelerant.startup import setup_prereqs
 
 app = Flask(__name__)
 
@@ -83,4 +84,5 @@ def optimize(
 
 
 if __name__ == "__main__":
+    setup_prereqs()
     app.run(debug=True)
